@@ -16,6 +16,14 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit"
+  },
+  "dependencies": {
+    "mongoose": "^9.8.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
   }
 }

@@ -1,12 +1,21 @@
 import { createServer, type Server } from "node:http";
 
+import {
+  connectDatabase,
+  disconnectDatabase,
+} from "@codebase-explainer/database";
+
 import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
 
 const shutdownTimeoutMs = 10_000;
 
-export function startServer(): Server {
+export async function startServer(): Promise<Server> {
+  await connectDatabase(env.MONGODB_URI, {
+    serverSelectionTimeoutMS: env.MONGODB_SERVER_SELECTION_TIMEOUT_MS,
+  });
+
   const server = createServer(createApp());
 
   server.listen(env.API_PORT, () => {
@@ -25,7 +34,7 @@ export function startServer(): Server {
     }, shutdownTimeoutMs);
     forcedShutdown.unref();
 
-    server.close((error) => {
+    server.close(async (error) => {
       clearTimeout(forcedShutdown);
 
       if (error) {
@@ -34,6 +43,7 @@ export function startServer(): Server {
         return;
       }
 
+      await disconnectDatabase();
       logger.info("API server stopped");
     });
   };

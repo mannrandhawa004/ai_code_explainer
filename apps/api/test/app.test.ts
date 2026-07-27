@@ -22,6 +22,16 @@ describe("Express API", () => {
     expect(response.headers["x-content-type-options"]).toBe("nosniff");
   });
 
+  it("reports an unavailable database without crashing the API", async () => {
+    const response = await request(app).get("/api/health/database").expect(503);
+
+    expect(response.body).toMatchObject({
+      status: "unavailable",
+      service: "mongodb",
+      connection: "disconnected",
+    });
+  });
+
   it("returns a normalized response for unknown routes", async () => {
     const response = await request(app).get("/api/unknown").expect(404);
 

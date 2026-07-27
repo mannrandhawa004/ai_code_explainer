@@ -8,6 +8,15 @@ const envSchema = z.object({
     .default("development"),
   API_PORT: z.coerce.number().int().min(1).max(65_535).default(5_000),
   FRONTEND_URL: z.url().default("http://localhost:3000"),
+  MONGODB_URI: z
+    .string()
+    .min(1)
+    .default("mongodb://localhost:27017/codebase_explainer"),
+  MONGODB_SERVER_SELECTION_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5_000),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
