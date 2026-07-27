@@ -1,2 +1,3 @@
-// The Express application is introduced in development step 3.
-export {};
+import { startServer } from "./server.js";
+
+startServer();

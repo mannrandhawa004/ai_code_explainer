@@ -1,0 +1,90 @@
+import { randomUUID } from "node:crypto";
+
+import cors, { type CorsOptions } from "cors";
+import express, { type Express } from "express";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
+import { pinoHttp } from "pino-http";
+import type { Logger } from "pino";
+
+import { env } from "./config/env.js";
+import { logger as defaultLogger } from "./config/logger.js";
+import { AppError } from "./errors/app-error.js";
+import { errorHandler } from "./middleware/error-handler.js";
+import { notFound } from "./middleware/not-found.js";
+import { apiRouter } from "./routes/index.js";
+
+type CreateAppOptions = {
+  logger?: Logger;
+  disableRateLimit?: boolean;
+};
+
+const corsOptions: CorsOptions = {
+  credentials: true,
+  origin(origin, callback) {
+    if (origin === undefined || origin === env.FRONTEND_URL) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new AppError(403, "CORS_ORIGIN_DENIED", "This origin is not allowed"));
+  },
+};
+
+export function createApp(options: CreateAppOptions = {}): Express {
+  const app = express();
+  const appLogger = options.logger ?? defaultLogger;
+
+  app.disable("x-powered-by");
+
+  if (env.NODE_ENV === "production") {
+    app.set("trust proxy", 1);
+  }
+
+  app.use(
+    pinoHttp({
+      logger: appLogger,
+      genReqId(request, response) {
+        const incomingId = request.headers["x-request-id"];
+        const requestId =
+          typeof incomingId === "string" ? incomingId : randomUUID();
+        response.setHeader("x-request-id", requestId);
+        return requestId;
+      },
+      autoLogging: {
+        ignore: (request) => request.url === "/api/health",
+      },
+    }),
+  );
+  app.use(helmet());
+  app.use(cors(corsOptions));
+
+  if (!options.disableRateLimit) {
+    app.use(
+      rateLimit({
+        windowMs: env.API_RATE_LIMIT_WINDOW_MS,
+        limit: env.API_RATE_LIMIT_MAX,
+        standardHeaders: "draft-8",
+        legacyHeaders: false,
+        skip: (request) => request.path === "/api/health",
+        handler(_request, response) {
+          response.status(429).json({
+            error: {
+              code: "RATE_LIMIT_EXCEEDED",
+              message: "Too many requests; please try again later",
+            },
+          });
+        },
+      }),
+    );
+  }
+
+  app.use(express.json({ limit: env.API_JSON_LIMIT }));
+  app.use(express.urlencoded({ extended: false, limit: env.API_JSON_LIMIT }));
+
+  app.use("/api", apiRouter);
+  app.use(notFound);
+  app.use(errorHandler);
+
+  return app;
+}
