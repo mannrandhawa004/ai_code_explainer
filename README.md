@@ -26,7 +26,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 ## Implementation progress
 
 - [x] 1. Create monorepo
-- [ ] 2. Configure TypeScript
+- [x] 2. Configure TypeScript
 - [ ] 3. Create Express API
 - [ ] 4. Connect MongoDB
 - [ ] 5. Start Qdrant
@@ -48,7 +48,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 ## Current state
 
-Step 1 establishes the workspace boundaries and ownership of every app/package. TypeScript, runtime dependencies, application code, infrastructure, and tests are intentionally added in their corresponding later steps.
+Step 2 establishes strict shared TypeScript defaults and environment-specific compiler configurations for the web, API, worker, and reusable packages. Runtime dependencies, application code, infrastructure, and tests are intentionally added in their corresponding later steps.
 
 ## Prerequisites
 
