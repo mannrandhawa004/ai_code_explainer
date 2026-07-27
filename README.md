@@ -28,7 +28,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 1. Create monorepo
 - [x] 2. Configure TypeScript
 - [x] 3. Create Express API
-- [ ] 4. Connect MongoDB
+- [x] 4. Connect MongoDB
 - [ ] 5. Start Qdrant
 - [ ] 6. Build public repository clone service
 - [ ] 7. Build file scanner
@@ -48,7 +48,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 ## Current state
 
-Step 3 provides a production-oriented Express foundation with validated configuration, security middleware, structured logging, rate limiting, health checks, normalized errors, graceful shutdown, and integration tests. Database connectivity and feature routes remain in their corresponding later steps.
+Step 4 adds managed MongoDB connectivity, database health reporting, seven indexed Mongoose models, local Docker Compose infrastructure, and unit/integration coverage. Qdrant and repository feature routes remain in their corresponding later steps.
 
 ## Prerequisites
 
