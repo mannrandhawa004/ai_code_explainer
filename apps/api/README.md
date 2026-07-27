@@ -16,6 +16,8 @@ npm run build --workspace @codebase-explainer/api
 
 ```text
 GET /api/health
+GET /api/health/database
+GET /api/health/qdrant
 ```
 
 The API foundation includes validated environment configuration, security headers, an explicit CORS allowlist, request IDs, structured logging, rate limiting, JSON body limits, consistent error responses, and graceful shutdown.

@@ -5,6 +5,8 @@ import {
   pingDatabase,
 } from "@codebase-explainer/database";
 
+import { vectorStore } from "../config/vector-store.js";
+
 const startedAt = new Date().toISOString();
 
 export const healthRouter = Router();
@@ -26,6 +28,16 @@ healthRouter.get("/health/database", async (_request, response) => {
     status: healthy ? "ok" : "unavailable",
     service: "mongodb",
     connection: getDatabaseStatus(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+healthRouter.get("/health/qdrant", async (_request, response) => {
+  const health = await vectorStore.health();
+
+  response.status(health.status === "ok" ? 200 : 503).json({
+    ...health,
+    service: "qdrant",
     timestamp: new Date().toISOString(),
   });
 });

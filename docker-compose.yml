@@ -14,5 +14,22 @@ services:
       retries: 10
       start_period: 10s
 
+  qdrant:
+    image: qdrant/qdrant:v1.18.2
+    container_name: codebase-explainer-qdrant
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
 volumes:
   mongodb_data:
+  qdrant_data:

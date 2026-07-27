@@ -17,6 +17,18 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(5_000),
+  QDRANT_URL: z.url().default("http://localhost:6333"),
+  QDRANT_API_KEY: z
+    .string()
+    .optional()
+    .transform((value) => value?.trim() || undefined),
+  QDRANT_COLLECTION: z.string().min(1).default("code_chunks"),
+  QDRANT_VECTOR_SIZE: z.coerce.number().int().positive().default(1_536),
+  QDRANT_REQUEST_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5_000),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),

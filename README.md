@@ -12,6 +12,7 @@ apps/api       Express REST API
 apps/worker    BullMQ indexing worker
 packages/shared    Shared schemas, types, and constants
 packages/database  MongoDB models and database helpers
+packages/vector-store  Qdrant client and collection lifecycle
 packages/eslint-config  Shared lint configuration
 docker         Container definitions
 ```
@@ -29,7 +30,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 2. Configure TypeScript
 - [x] 3. Create Express API
 - [x] 4. Connect MongoDB
-- [ ] 5. Start Qdrant
+- [x] 5. Start Qdrant
 - [ ] 6. Build public repository clone service
 - [ ] 7. Build file scanner
 - [ ] 8. Build file filtering
@@ -48,7 +49,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 ## Current state
 
-Step 4 adds managed MongoDB connectivity, database health reporting, seven indexed Mongoose models, local Docker Compose infrastructure, and unit/integration coverage. Qdrant and repository feature routes remain in their corresponding later steps.
+Step 5 adds a reusable Qdrant client package, compatible collection initialization, tenant-filter payload indexes, health reporting, pinned local infrastructure, and unit/integration coverage. Embedding generation and vector operations remain in Steps 10 and 11.
 
 ## Prerequisites
 

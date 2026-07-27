@@ -8,6 +8,7 @@ import {
 import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
+import { vectorStore } from "./config/vector-store.js";
 
 const shutdownTimeoutMs = 10_000;
 
@@ -15,6 +16,14 @@ export async function startServer(): Promise<Server> {
   await connectDatabase(env.MONGODB_URI, {
     serverSelectionTimeoutMS: env.MONGODB_SERVER_SELECTION_TIMEOUT_MS,
   });
+
+  try {
+    const collection = await vectorStore.ensureCollection();
+    logger.info(collection, "Qdrant collection ready");
+  } catch (error) {
+    await disconnectDatabase();
+    throw error;
+  }
 
   const server = createServer(createApp());
 
