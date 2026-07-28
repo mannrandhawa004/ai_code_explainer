@@ -33,7 +33,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 4. Connect MongoDB
 - [x] 5. Start Qdrant
 - [x] 6. Build public repository clone service
-- [ ] 7. Build file scanner
+- [x] 7. Build file scanner
 - [ ] 8. Build file filtering
 - [ ] 9. Build line-based chunker
 - [ ] 10. Generate embeddings
@@ -50,7 +50,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 ## Current state
 
-Step 6 adds a hardened public GitHub clone service with canonical URL and branch validation, shallow prompt-free Git execution, bounded commands, commit metadata, and guaranteed cleanup. File discovery and filtering remain in Steps 7 and 8.
+Step 7 adds deterministic, root-confined filesystem scanning with symlink avoidance, traversal limits, cancellation, policy extension points, metadata collection, and real clone-and-scan coverage. File filtering remains isolated in Step 8.
 
 ## Prerequisites
 
