@@ -11,3 +11,12 @@ export {
   type PublicRepositoryCloneRequest,
   type RepositoryCloneErrorCode,
 } from "./public-repository-cloner.js";
+export {
+  RepositoryFileScanner,
+  RepositoryScanError,
+  type RepositoryScanEntry,
+  type RepositoryScanErrorCode,
+  type RepositoryScanOptions,
+  type RepositoryScanResult,
+  type ScannedRepositoryFile,
+} from "./repository-file-scanner.js";
