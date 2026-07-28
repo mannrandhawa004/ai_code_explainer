@@ -20,3 +20,16 @@ export {
   type RepositoryScanResult,
   type ScannedRepositoryFile,
 } from "./repository-file-scanner.js";
+export {
+  RepositoryFileFilter,
+  RepositoryFileFilterError,
+  defaultIgnoredRepositoryDirectories,
+  defaultSupportedRepositoryExtensions,
+  type FilteredRepositoryFiles,
+  type RepositoryFileExclusion,
+  type RepositoryFileExclusionReason,
+  type RepositoryFileFilterErrorCode,
+  type RepositoryFileFilterOptions,
+  type RepositoryFileFilterScanOptions,
+  type RepositoryFileFilterScanSummary,
+} from "./repository-file-filter.js";

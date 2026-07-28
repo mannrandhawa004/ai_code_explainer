@@ -22,5 +22,9 @@
   },
   "devDependencies": {
     "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "ignore": "^7.0.6",
+    "p-limit": "^7.3.1"
   }
 }

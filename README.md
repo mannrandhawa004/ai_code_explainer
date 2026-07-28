@@ -34,7 +34,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 5. Start Qdrant
 - [x] 6. Build public repository clone service
 - [x] 7. Build file scanner
-- [ ] 8. Build file filtering
+- [x] 8. Build file filtering
 - [ ] 9. Build line-based chunker
 - [ ] 10. Generate embeddings
 - [ ] 11. Store vectors
@@ -50,7 +50,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 ## Current state
 
-Step 7 adds deterministic, root-confined filesystem scanning with symlink avoidance, traversal limits, cancellation, policy extension points, metadata collection, and real clone-and-scan coverage. File filtering remains isolated in Step 8.
+Step 8 adds hierarchical `.gitignore` support, safe source-extension allowlisting, secret/generated/lock/binary file rejection, bounded content inspection, and file/repository size limits. Line-based chunking remains isolated in Step 9.
 
 ## Prerequisites
 
