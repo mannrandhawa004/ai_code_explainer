@@ -26,7 +26,10 @@ export type QdrantClientContract = Pick<
   | "collectionExists"
   | "createCollection"
   | "createPayloadIndex"
+  | "delete"
   | "getCollection"
+  | "retrieve"
+  | "upsert"
   | "versionInfo"
 >;
 
@@ -34,9 +37,12 @@ export const qdrantPayloadIndexes = [
   "userId",
   "repositoryId",
   "branch",
+  "commitSha",
   "filePath",
   "language",
   "symbolName",
+  "symbolType",
+  "contentHash",
 ] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {

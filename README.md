@@ -38,7 +38,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 8. Build file filtering
 - [x] 9. Build line-based chunker
 - [x] 10. Generate embeddings
-- [ ] 11. Store vectors
+- [x] 11. Store vectors
 - [ ] 12. Build repository question endpoint
 - [ ] 13. Add source citations
 - [ ] 14. Build Next.js chat interface
@@ -51,7 +51,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 ## Current state
 
-Step 10 adds structured chunk embedding text, token-aware batching, deduplication, bounded OpenAI request concurrency, retries/timeouts, response validation, and an opt-in live provider test. Vector persistence remains isolated in Step 11.
+Step 11 adds validated code-chunk payload mapping, deterministic and bounded batched Qdrant upserts, complete-write checks, expanded payload indexes, safe tenant/repository-scoped deletion, and an opt-in real Qdrant lifecycle test. The repository question endpoint remains isolated in Step 12.
 
 ## Prerequisites
 
