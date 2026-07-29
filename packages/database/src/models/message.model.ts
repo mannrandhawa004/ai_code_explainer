@@ -19,6 +19,13 @@ export interface MessageSource {
   symbolName?: string;
 }
 
+export interface MessageTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+}
+
 export interface Message {
   conversationId: Types.ObjectId;
   role: MessageRole;
@@ -26,6 +33,8 @@ export interface Message {
   sources: MessageSource[];
   feedback?: MessageFeedback;
   model?: string;
+  providerResponseId?: string;
+  tokenUsage?: MessageTokenUsage;
   latencyMs?: number;
   createdAt: Date;
   updatedAt: Date;
@@ -37,6 +46,16 @@ const messageSourceSchema = new Schema<MessageSource>(
     startLine: { type: Number, required: true, min: 1 },
     endLine: { type: Number, required: true, min: 1 },
     symbolName: { type: String, trim: true },
+  },
+  { _id: false },
+);
+
+const messageTokenUsageSchema = new Schema<MessageTokenUsage>(
+  {
+    inputTokens: { type: Number, required: true, min: 0 },
+    outputTokens: { type: Number, required: true, min: 0 },
+    reasoningTokens: { type: Number, required: true, min: 0 },
+    totalTokens: { type: Number, required: true, min: 0 },
   },
   { _id: false },
 );
@@ -53,6 +72,8 @@ const messageSchema = new Schema<Message>(
     sources: { type: [messageSourceSchema], default: () => [] },
     feedback: { type: String, enum: messageFeedbackValues },
     model: { type: String, trim: true },
+    providerResponseId: { type: String, trim: true },
+    tokenUsage: { type: messageTokenUsageSchema },
     latencyMs: { type: Number, min: 0 },
   },
   { timestamps: true, collection: "messages" },

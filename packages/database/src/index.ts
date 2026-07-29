@@ -27,6 +27,7 @@ export {
   type MessageFeedback,
   type MessageRole,
   type MessageSource,
+  type MessageTokenUsage,
 } from "./models/message.model.js";
 export {
   RepositoryFileModel,

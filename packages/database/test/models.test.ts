@@ -83,6 +83,24 @@ describe("database models", () => {
     });
   });
 
+  it("validates non-negative answer token usage", async () => {
+    const message = new MessageModel({
+      conversationId: new Types.ObjectId(),
+      role: "assistant",
+      content: "Grounded answer",
+      tokenUsage: {
+        inputTokens: 100,
+        outputTokens: 25,
+        reasoningTokens: -1,
+        totalTokens: 125,
+      },
+    });
+
+    await expect(message.validate()).rejects.toMatchObject({
+      errors: { "tokenUsage.reasoningTokens": expect.anything() },
+    });
+  });
+
   it("defines tenant-aware repository indexes", () => {
     const indexes = RepositoryModel.schema.indexes();
     expect(indexes).toContainEqual([

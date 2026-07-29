@@ -30,6 +30,7 @@ function createClient(
       status: "completed",
     }),
     getCollection: vi.fn(),
+    query: vi.fn().mockResolvedValue({ points: [] }),
     retrieve: vi.fn().mockResolvedValue([]),
     upsert: vi.fn().mockResolvedValue({
       operation_id: 1,

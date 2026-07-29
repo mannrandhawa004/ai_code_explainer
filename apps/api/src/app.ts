@@ -12,11 +12,15 @@ import { logger as defaultLogger } from "./config/logger.js";
 import { AppError } from "./errors/app-error.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { notFound } from "./middleware/not-found.js";
-import { apiRouter } from "./routes/index.js";
+import { createApiRouter } from "./routes/index.js";
+import type { AuthenticatedUserIdResolver } from "./routes/question.routes.js";
+import type { RepositoryQuestionServiceContract } from "./services/repository-question.service.js";
 
-type CreateAppOptions = {
+export type CreateAppOptions = {
   logger?: Logger;
   disableRateLimit?: boolean;
+  repositoryQuestionService?: RepositoryQuestionServiceContract;
+  resolveAuthenticatedUserId?: AuthenticatedUserIdResolver;
 };
 
 const corsOptions: CorsOptions = {
@@ -82,7 +86,22 @@ export function createApp(options: CreateAppOptions = {}): Express {
   app.use(express.json({ limit: env.API_JSON_LIMIT }));
   app.use(express.urlencoded({ extended: false, limit: env.API_JSON_LIMIT }));
 
-  app.use("/api", apiRouter);
+  app.use(
+    "/api",
+    createApiRouter({
+      question: {
+        ...(options.repositoryQuestionService === undefined
+          ? {}
+          : { service: options.repositoryQuestionService }),
+        ...(options.resolveAuthenticatedUserId === undefined
+          ? {}
+          : {
+              resolveAuthenticatedUserId:
+                options.resolveAuthenticatedUserId,
+            }),
+      },
+    }),
+  );
   app.use(notFound);
   app.use(errorHandler);
 
