@@ -35,7 +35,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 6. Build public repository clone service
 - [x] 7. Build file scanner
 - [x] 8. Build file filtering
-- [ ] 9. Build line-based chunker
+- [x] 9. Build line-based chunker
 - [ ] 10. Generate embeddings
 - [ ] 11. Store vectors
 - [ ] 12. Build repository question endpoint
@@ -50,7 +50,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 ## Current state
 
-Step 8 adds hierarchical `.gitignore` support, safe source-extension allowlisting, secret/generated/lock/binary file rejection, bounded content inspection, and file/repository size limits. Line-based chunking remains isolated in Step 9.
+Step 9 adds deterministic 120-line chunks with 20-line overlap, exact source ranges, language metadata, SHA-256 content hashes, stable chunk IDs, full UTF-8 validation, and bounded repository-wide reading limits. Embedding generation remains isolated in Step 10.
 
 ## Prerequisites
 
