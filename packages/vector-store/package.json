@@ -15,15 +15,20 @@
     "dist"
   ],
   "scripts": {
+    "prebuild": "npm run build --workspace @codebase-explainer/ai",
     "build": "tsc -p tsconfig.json",
+    "pretest": "npm run build --workspace @codebase-explainer/ai",
     "test": "vitest run",
     "test:watch": "vitest",
+    "pretypecheck": "npm run build --workspace @codebase-explainer/ai",
     "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "devDependencies": {
     "vitest": "^4.1.10"
   },
   "dependencies": {
-    "@qdrant/js-client-rest": "^1.18.0"
+    "@codebase-explainer/ai": "*",
+    "@qdrant/js-client-rest": "^1.18.0",
+    "p-limit": "^7.3.1"
   }
 }

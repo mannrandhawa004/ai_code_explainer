@@ -25,7 +25,16 @@ function createClient(
       operation_id: 1,
       status: "completed",
     }),
+    delete: vi.fn().mockResolvedValue({
+      operation_id: 1,
+      status: "completed",
+    }),
     getCollection: vi.fn(),
+    retrieve: vi.fn().mockResolvedValue([]),
+    upsert: vi.fn().mockResolvedValue({
+      operation_id: 1,
+      status: "completed",
+    }),
     versionInfo: vi.fn().mockResolvedValue({
       title: "qdrant",
       version: "1.18.2",
