@@ -11,6 +11,7 @@ apps/web       Next.js frontend
 apps/api       Express REST API
 apps/worker    BullMQ indexing worker
 packages/shared    Shared schemas, types, and constants
+packages/ai        OpenAI embedding and generation services
 packages/database  MongoDB models and database helpers
 packages/vector-store  Qdrant client and collection lifecycle
 packages/repository  Safe cloning and repository processing
@@ -36,7 +37,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 7. Build file scanner
 - [x] 8. Build file filtering
 - [x] 9. Build line-based chunker
-- [ ] 10. Generate embeddings
+- [x] 10. Generate embeddings
 - [ ] 11. Store vectors
 - [ ] 12. Build repository question endpoint
 - [ ] 13. Add source citations
@@ -50,7 +51,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 ## Current state
 
-Step 9 adds deterministic 120-line chunks with 20-line overlap, exact source ranges, language metadata, SHA-256 content hashes, stable chunk IDs, full UTF-8 validation, and bounded repository-wide reading limits. Embedding generation remains isolated in Step 10.
+Step 10 adds structured chunk embedding text, token-aware batching, deduplication, bounded OpenAI request concurrency, retries/timeouts, response validation, and an opt-in live provider test. Vector persistence remains isolated in Step 11.
 
 ## Prerequisites
 

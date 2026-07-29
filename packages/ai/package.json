@@ -1,0 +1,35 @@
+{
+  "name": "@codebase-explainer/ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prebuild": "npm run build --workspace @codebase-explainer/repository",
+    "build": "tsc -p tsconfig.json",
+    "pretest": "npm run build --workspace @codebase-explainer/repository",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "pretypecheck": "npm run build --workspace @codebase-explainer/repository",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit"
+  },
+  "dependencies": {
+    "@codebase-explainer/repository": "*",
+    "js-tiktoken": "^1.0.21",
+    "openai": "^7.1.0",
+    "p-limit": "^7.3.1"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
+  }
+}
