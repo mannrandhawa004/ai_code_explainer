@@ -40,7 +40,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 10. Generate embeddings
 - [x] 11. Store vectors
 - [x] 12. Build repository question endpoint
-- [ ] 13. Add source citations
+- [x] 13. Add source citations
 - [ ] 14. Build Next.js chat interface
 - [ ] 15. Add BullMQ worker
 - [ ] 16. Add Tree-sitter
@@ -51,7 +51,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 ## Current state
 
-Step 12 adds the secure non-streaming repository chat endpoint: ownership/readiness checks, question classification and embeddings, current-commit semantic retrieval, bounded prompt-injection-resistant context, grounded OpenAI Responses generation, conversation history, and model/usage/latency persistence. Verified file and line citations remain isolated in Step 13.
+Step 13 adds strict structured answer output with retrieved-source IDs, server-side citation validation and rendering, API source metadata, and citation persistence on assistant messages. Each answer segment must cite retrieved evidence, and model-invented source IDs or malformed citation output fail closed.
 
 ## Prerequisites
 

@@ -32,6 +32,24 @@ Request body:
 }
 ```
 
-Source citations are intentionally added in Step 13.
+Successful responses include the cited sources next to the rendered answer:
+
+```json
+{
+  "data": {
+    "answer": "Authentication is handled by middleware. [src/auth.ts:L10-L20]",
+    "sources": [
+      {
+        "filePath": "src/auth.ts",
+        "startLine": 10,
+        "endLine": 20,
+        "symbolName": "authenticate"
+      }
+    ]
+  }
+}
+```
+
+Only sources validated against the retrieved repository chunks are returned and persisted. The deterministic insufficient-context response has an empty `sources` array.
 
 The API foundation also includes validated environment configuration, security headers, an explicit CORS allowlist, request IDs, structured logging, rate limiting, JSON body limits, consistent error responses, and graceful shutdown.

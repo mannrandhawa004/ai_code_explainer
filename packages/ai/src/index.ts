@@ -69,6 +69,7 @@ export {
   type AnswerTokenUsage,
   type OpenAIAnswerProviderConfig,
   type RepositoryAnswerErrorCode,
+  type RepositoryAnswerCitation,
   type RepositoryAnswerGeneratorConfig,
   type RepositoryAnswerRequest,
   type RepositoryAnswerResult,

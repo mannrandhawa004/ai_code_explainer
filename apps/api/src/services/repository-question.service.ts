@@ -9,6 +9,7 @@ import {
   createOpenAIRepositoryAnswerGeneratorFromEnv,
   type AnswerTokenUsage,
   type QuestionEmbedding,
+  type RepositoryAnswerCitation,
   type RepositoryAnswerResult,
   type RepositoryAnswerSource,
   type RepositoryConversationMessage,
@@ -39,6 +40,7 @@ export type RepositoryQuestionResult = {
   userMessageId: string;
   assistantMessageId: string;
   answer: string;
+  sources: RepositoryAnswerCitation[];
   category: RepositoryQuestionCategory;
   branch: string;
   commitSha: string;
@@ -75,6 +77,7 @@ export type PersistQuestionExchangeInput = {
   branch: string;
   question: string;
   answer: string;
+  sources: readonly RepositoryAnswerCitation[];
   model?: string;
   providerResponseId?: string;
   usage: AnswerTokenUsage;
@@ -324,6 +327,7 @@ export class RepositoryQuestionService
     }
 
     let answer = repositoryQuestionNoContextAnswer;
+    let sources: RepositoryAnswerCitation[] = [];
     let model: string | undefined;
     let providerResponseId: string | undefined;
     let usage = emptyAnswerUsage;
@@ -344,6 +348,7 @@ export class RepositoryQuestionService
           ...(input.signal === undefined ? {} : { signal: input.signal }),
         });
         answer = generated.answer;
+        sources = generated.sources;
         model = generated.model;
         providerResponseId = generated.responseId;
         usage = generated.usage;
@@ -370,6 +375,7 @@ export class RepositoryQuestionService
         branch: repository.selectedBranch,
         question,
         answer,
+        sources,
         ...(model === undefined ? {} : { model }),
         ...(providerResponseId === undefined
           ? {}
@@ -391,6 +397,7 @@ export class RepositoryQuestionService
       userMessageId: persisted.userMessageId,
       assistantMessageId: persisted.assistantMessageId,
       answer,
+      sources,
       category,
       branch: repository.selectedBranch,
       commitSha: repository.lastIndexedCommit,
@@ -506,7 +513,7 @@ export class MongooseRepositoryQuestionConversationGateway
           conversationId,
           role: "assistant",
           content: input.answer,
-          sources: [],
+          sources: input.sources,
           ...(input.model === undefined ? {} : { model: input.model }),
           ...(input.providerResponseId === undefined
             ? {}

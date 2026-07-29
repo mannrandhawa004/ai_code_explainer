@@ -101,6 +101,25 @@ describe("database models", () => {
     });
   });
 
+  it("rejects message sources with reversed line ranges", async () => {
+    const message = new MessageModel({
+      conversationId: new Types.ObjectId(),
+      role: "assistant",
+      content: "Grounded answer",
+      sources: [
+        {
+          filePath: "src/auth.ts",
+          startLine: 20,
+          endLine: 10,
+        },
+      ],
+    });
+
+    await expect(message.validate()).rejects.toMatchObject({
+      errors: { "sources.0.endLine": expect.anything() },
+    });
+  });
+
   it("defines tenant-aware repository indexes", () => {
     const indexes = RepositoryModel.schema.indexes();
     expect(indexes).toContainEqual([
