@@ -3,7 +3,10 @@ import { QdrantClient } from "@qdrant/js-client-rest";
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { QdrantCodeChunkStore } from "../src/index.js";
+import {
+  QdrantCodeChunkSearch,
+  QdrantCodeChunkStore,
+} from "../src/index.js";
 
 const qdrantTestUrl = process.env.QDRANT_TEST_URL;
 const describeWithQdrant = qdrantTestUrl ? describe : describe.skip;
@@ -89,6 +92,21 @@ describeWithQdrant("Qdrant code-chunk storage", () => {
       "export const replacement = true;",
     );
     expect(replaced[0]?.vector).toEqual([0.4, 0.3, 0.2, 0.1]);
+
+    const search = new QdrantCodeChunkSearch(store.vectorStore.config);
+    const searchResults = await search.search({
+      vector: [0.4, 0.3, 0.2, 0.1],
+      userId: "integration-user",
+      repositoryId: "integration-repository",
+      branch: "main",
+      commitSha: "integration-commit",
+      limit: 5,
+    });
+    expect(searchResults[0]).toMatchObject({
+      id: replacement.chunk.id,
+      filePath: "src/integration.ts",
+      content: "export const replacement = true;",
+    });
 
     await store.deleteRepositoryChunks({
       userId: "integration-user",

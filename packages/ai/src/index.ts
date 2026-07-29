@@ -42,3 +42,36 @@ export {
   formatCodeChunkForEmbedding,
   type CodeChunkEmbeddingTextOptions,
 } from "./embedding-text.js";
+export {
+  classifyRepositoryQuestion,
+  repositoryQuestionCategories,
+  type RepositoryQuestionCategory,
+} from "./question-classifier.js";
+export {
+  QuestionEmbeddingService,
+  createOpenAIQuestionEmbeddingServiceFromEnv,
+  maximumRepositoryQuestionCharacters,
+  type QuestionEmbedding,
+} from "./question-embedding-service.js";
+export {
+  OpenAIAnswerProvider,
+  RepositoryAnswerError,
+  RepositoryAnswerGenerator,
+  createOpenAIRepositoryAnswerGeneratorFromEnv,
+  defaultAnswerMaxOutputTokens,
+  defaultAnswerModel,
+  defaultMaximumConversationHistoryCharacters,
+  defaultMaximumRepositoryContextCharacters,
+  type AnswerProvider,
+  type AnswerProviderRequest,
+  type AnswerProviderRequestOptions,
+  type AnswerProviderResponse,
+  type AnswerTokenUsage,
+  type OpenAIAnswerProviderConfig,
+  type RepositoryAnswerErrorCode,
+  type RepositoryAnswerGeneratorConfig,
+  type RepositoryAnswerRequest,
+  type RepositoryAnswerResult,
+  type RepositoryAnswerSource,
+  type RepositoryConversationMessage,
+} from "./repository-answer-generator.js";

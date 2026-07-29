@@ -1,4 +1,14 @@
 export {
+  CodeChunkSearchError,
+  QdrantCodeChunkSearch,
+  defaultCodeChunkSearchLimit,
+  maximumCodeChunkSearchLimit,
+  type CodeChunkSearchErrorCode,
+  type CodeChunkSearchRequest,
+  type CodeChunkSearchResult,
+} from "./code-chunk-search.js";
+
+export {
   CodeChunkStoreError,
   QdrantCodeChunkStore,
   codeChunkPayloadSchemaVersion,

@@ -29,6 +29,12 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(5_000),
+  QUESTION_SEARCH_LIMIT: z.coerce.number().int().min(1).max(50).default(15),
+  QUESTION_SCORE_THRESHOLD: z.preprocess(
+    (value) =>
+      typeof value === "string" && !value.trim() ? undefined : value,
+    z.coerce.number().finite().optional(),
+  ),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),

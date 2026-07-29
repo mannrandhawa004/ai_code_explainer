@@ -28,6 +28,7 @@ export type QdrantClientContract = Pick<
   | "createPayloadIndex"
   | "delete"
   | "getCollection"
+  | "query"
   | "retrieve"
   | "upsert"
   | "versionInfo"
