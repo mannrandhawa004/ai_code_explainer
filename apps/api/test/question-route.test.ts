@@ -16,7 +16,15 @@ const result = {
   conversationId: "cccccccccccccccccccccccc",
   userMessageId: "dddddddddddddddddddddddd",
   assistantMessageId: "eeeeeeeeeeeeeeeeeeeeeeee",
-  answer: "Authentication is handled by middleware.",
+  answer: "Authentication is handled by middleware. [src/auth.ts:L1-L3]",
+  sources: [
+    {
+      filePath: "src/auth.ts",
+      startLine: 1,
+      endLine: 3,
+      symbolName: "authenticate",
+    },
+  ],
   category: "semantic" as const,
   branch: "main",
   commitSha: "abc123",

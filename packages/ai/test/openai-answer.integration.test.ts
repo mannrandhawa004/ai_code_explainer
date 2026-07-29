@@ -35,6 +35,15 @@ describeWithOpenAI("OpenAI repository answer integration", () => {
     });
 
     expect(result.answer).not.toHaveLength(0);
+    expect(result.answer).toContain("[src/math.ts:L1-L3]");
+    expect(result.sources).toEqual([
+      {
+        filePath: "src/math.ts",
+        startLine: 1,
+        endLine: 3,
+        symbolName: "add",
+      },
+    ]);
     expect(result.responseId).not.toHaveLength(0);
     expect(result.usage.totalTokens).toBeGreaterThan(0);
   }, 120_000);

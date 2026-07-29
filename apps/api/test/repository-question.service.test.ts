@@ -57,6 +57,15 @@ const answerUsage = {
   totalTokens: 125,
 };
 
+const answerSources = [
+  {
+    filePath: chunk.filePath,
+    startLine: chunk.startLine,
+    endLine: chunk.endLine,
+    symbolName: chunk.symbolName,
+  },
+];
+
 function createDependencies(
   overrides: Partial<RepositoryQuestionServiceDependencies> = {},
 ) {
@@ -82,7 +91,9 @@ function createDependencies(
   };
   const answerer = {
     generate: vi.fn().mockResolvedValue({
-      answer: "Authentication uses the authenticate function.",
+      answer:
+        "Authentication uses the authenticate function. [src/auth.ts:L1-L3]",
+      sources: answerSources,
       model: "gpt-5.6-sol",
       responseId: "response-1",
       usage: answerUsage,
@@ -119,7 +130,9 @@ describe("RepositoryQuestionService", () => {
       conversationId: "cccccccccccccccccccccccc",
       userMessageId: "dddddddddddddddddddddddd",
       assistantMessageId: "eeeeeeeeeeeeeeeeeeeeeeee",
-      answer: "Authentication uses the authenticate function.",
+      answer:
+        "Authentication uses the authenticate function. [src/auth.ts:L1-L3]",
+      sources: answerSources,
       category: "semantic",
       branch: "main",
       commitSha: "abc123",
@@ -159,7 +172,9 @@ describe("RepositoryQuestionService", () => {
       expect.objectContaining({
         authenticatedUserId: repository.userId,
         repositoryId: repository.id,
-        answer: "Authentication uses the authenticate function.",
+        answer:
+          "Authentication uses the authenticate function. [src/auth.ts:L1-L3]",
+        sources: answerSources,
         usage: answerUsage,
       }),
     );
@@ -215,6 +230,7 @@ describe("RepositoryQuestionService", () => {
 
     expect(result.answer).toBe(repositoryQuestionNoContextAnswer);
     expect(result.retrievedChunks).toBe(0);
+    expect(result.sources).toEqual([]);
     expect(result.model).toBeUndefined();
     expect(result.usage).toEqual({
       inputTokens: 0,
@@ -224,6 +240,9 @@ describe("RepositoryQuestionService", () => {
     });
     expect(dependencies.answerer.generate).not.toHaveBeenCalled();
     expect(dependencies.conversations.persistExchange).toHaveBeenCalled();
+    expect(dependencies.conversations.persistExchange).toHaveBeenCalledWith(
+      expect.objectContaining({ sources: [] }),
+    );
   });
 
   it.each([

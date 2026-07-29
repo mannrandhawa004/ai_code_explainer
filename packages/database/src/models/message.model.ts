@@ -60,6 +60,10 @@ const messageTokenUsageSchema = new Schema<MessageTokenUsage>(
   { _id: false },
 );
 
+messageSourceSchema.path("endLine").validate(function validateLineRange(endLine) {
+  return endLine >= this.startLine;
+}, "endLine must be greater than or equal to startLine");
+
 const messageSchema = new Schema<Message>(
   {
     conversationId: {
