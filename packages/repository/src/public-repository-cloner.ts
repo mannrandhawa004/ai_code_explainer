@@ -14,6 +14,7 @@ export type PublicGitHubRepository = {
 export type PublicRepositoryCloneRequest = {
   repositoryUrl: string;
   branch?: string;
+  signal?: AbortSignal;
 };
 
 export type ClonedPublicRepository = PublicGitHubRepository & {
@@ -40,12 +41,14 @@ export type CloneCommandRunner = (
     timeoutMs: number;
     maxOutputBytes: number;
     gitConfigPath: string;
+    signal?: AbortSignal;
   },
 ) => Promise<CloneCommandResult>;
 
 export type RepositoryCloneErrorCode =
   | "INVALID_REPOSITORY_URL"
   | "INVALID_BRANCH"
+  | "CLONE_ABORTED"
   | "CLONE_FAILED"
   | "METADATA_FAILED"
   | "CLEANUP_FAILED";
@@ -103,6 +106,7 @@ function defaultCommandRunner(
     timeoutMs: number;
     maxOutputBytes: number;
     gitConfigPath: string;
+    signal?: AbortSignal;
   },
 ): Promise<CloneCommandResult> {
   return new Promise((resolve, reject) => {
@@ -116,6 +120,7 @@ function defaultCommandRunner(
         windowsHide: true,
         encoding: "utf8",
         env: createGitEnvironment(options.gitConfigPath),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
       (error, stdout, stderr) => {
         if (error) {
@@ -259,6 +264,8 @@ export class PublicRepositoryCloner {
       request.branch === undefined ? undefined : validateGitBranch(request.branch);
     const tempRoot = path.resolve(this.config.tempRoot);
 
+    this.assertNotAborted(request.signal);
+
     await fs.mkdir(tempRoot, { recursive: true });
     const resolvedTempRoot = await fs.realpath(tempRoot);
     const sessionDirectory = await fs.mkdtemp(
@@ -283,11 +290,13 @@ export class PublicRepositoryCloner {
         repositoryDirectory,
         resolvedTempRoot,
         gitConfigPath,
+        request.signal,
       );
       const metadata = await this.readMetadata(
         repositoryDirectory,
         repository,
         gitConfigPath,
+        request.signal,
       );
 
       return await operation({
@@ -320,6 +329,7 @@ export class PublicRepositoryCloner {
     destination: string,
     workingDirectory: string,
     gitConfigPath: string,
+    signal: AbortSignal | undefined,
   ): Promise<void> {
     const arguments_ = [
       "-c",
@@ -343,8 +353,16 @@ export class PublicRepositoryCloner {
         timeoutMs: this.config.timeoutMs,
         maxOutputBytes: this.config.maxOutputBytes,
         gitConfigPath,
+        ...(signal === undefined ? {} : { signal }),
       });
     } catch (cause) {
+      if (signal?.aborted) {
+        throw new RepositoryCloneError(
+          "CLONE_ABORTED",
+          "Repository cloning was cancelled",
+          { cause: signal.reason ?? cause },
+        );
+      }
       throw new RepositoryCloneError(
         "CLONE_FAILED",
         `Unable to clone public GitHub repository ${repository.fullName}`,
@@ -357,7 +375,10 @@ export class PublicRepositoryCloner {
     repositoryDirectory: string,
     repository: PublicGitHubRepository,
     gitConfigPath: string,
+    signal: AbortSignal | undefined,
   ): Promise<{ branch: string; commitSha: string }> {
+    this.assertNotAborted(signal);
+
     try {
       const [branchResult, commitResult] = await Promise.all([
         this.runCommand(["rev-parse", "--abbrev-ref", "HEAD"], {
@@ -365,12 +386,14 @@ export class PublicRepositoryCloner {
           timeoutMs: this.config.timeoutMs,
           maxOutputBytes: this.config.maxOutputBytes,
           gitConfigPath,
+          ...(signal === undefined ? {} : { signal }),
         }),
         this.runCommand(["rev-parse", "HEAD"], {
           cwd: repositoryDirectory,
           timeoutMs: this.config.timeoutMs,
           maxOutputBytes: this.config.maxOutputBytes,
           gitConfigPath,
+          ...(signal === undefined ? {} : { signal }),
         }),
       ]);
       const branch = branchResult.stdout.trim();
@@ -386,6 +409,16 @@ export class PublicRepositoryCloner {
         "METADATA_FAILED",
         `Unable to read cloned repository metadata for ${repository.fullName}`,
         { cause },
+      );
+    }
+  }
+
+  private assertNotAborted(signal: AbortSignal | undefined): void {
+    if (signal?.aborted) {
+      throw new RepositoryCloneError(
+        "CLONE_ABORTED",
+        "Repository cloning was cancelled",
+        { cause: signal.reason },
       );
     }
   }

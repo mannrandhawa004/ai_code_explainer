@@ -29,6 +29,13 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(5_000),
+  REDIS_URL: z
+    .url()
+    .refine(
+      (value) => value.startsWith("redis://") || value.startsWith("rediss://"),
+      { message: "REDIS_URL must use the redis or rediss protocol" },
+    )
+    .default("redis://localhost:6379"),
   QUESTION_SEARCH_LIMIT: z.coerce.number().int().min(1).max(50).default(15),
   QUESTION_SCORE_THRESHOLD: z.preprocess(
     (value) =>
@@ -51,6 +58,13 @@ const result = envSchema.safeParse(process.env);
 
 if (!result.success) {
   throw new Error(`Invalid API environment:\n${z.prettifyError(result.error)}`);
+}
+
+if (
+  result.data.NODE_ENV === "production" &&
+  !result.data.REDIS_URL.startsWith("rediss://")
+) {
+  throw new Error("REDIS_URL must use TLS (rediss://) in production");
 }
 
 export const env = result.data;

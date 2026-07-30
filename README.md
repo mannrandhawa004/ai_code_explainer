@@ -42,7 +42,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 12. Build repository question endpoint
 - [x] 13. Add source citations
 - [x] 14. Build Next.js chat interface
-- [ ] 15. Add BullMQ worker
+- [x] 15. Add BullMQ worker
 - [ ] 16. Add Tree-sitter
 - [ ] 17. Add GitHub App
 - [ ] 18. Add webhooks
@@ -51,7 +51,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 ## Current state
 
-Step 14 adds the Next.js App Router frontend with a repository launcher, responsive conversation workspace, TanStack Query mutations, safe GitHub-flavored Markdown, lazy Shiki code highlighting, cited source cards, conversation continuation, cancellation/retry flows, and accessible loading and error states. The browser sends cookie-authenticated requests to the Step 13 endpoint and never accepts a client-provided identity.
+Step 15 adds a typed BullMQ/Redis indexing queue and a separate worker that safely clones public repositories, filters and chunks source files, generates embeddings, stores vectors, and persists progress and results in MongoDB. The API now exposes authenticated import, reindex, status, cancellation, and Redis-health endpoints. Jobs use exponential retries, per-repository deduplication, cancellation checks, bounded concurrency, and graceful shutdown.
 
 ## Prerequisites
 
@@ -61,3 +61,5 @@ Step 14 adds the Next.js App Router frontend with a repository launcher, respons
 - Docker Desktop (required beginning with the database/vector-storage steps)
 
 Copy `.env.example` to `.env` when configuration is introduced. Never commit `.env` or credentials.
+
+Start local infrastructure with `docker compose up -d`, then run the API and worker in separate terminals with `npm run dev --workspace @codebase-explainer/api` and `npm run dev --workspace @codebase-explainer/worker`. The Redis container is for local development; production should use a managed Redis service over `rediss://`.
