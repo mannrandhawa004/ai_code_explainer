@@ -6,6 +6,7 @@ import {
 } from "@codebase-explainer/database";
 
 import { vectorStore } from "../config/vector-store.js";
+import { getDefaultRepositoryIndexingQueue } from "../queues/repository-indexing.queue.js";
 
 const startedAt = new Date().toISOString();
 
@@ -38,6 +39,16 @@ healthRouter.get("/health/qdrant", async (_request, response) => {
   response.status(health.status === "ok" ? 200 : 503).json({
     ...health,
     service: "qdrant",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+healthRouter.get("/health/redis", async (_request, response) => {
+  const healthy = await getDefaultRepositoryIndexingQueue().health();
+
+  response.status(healthy ? 200 : 503).json({
+    status: healthy ? "ok" : "unavailable",
+    service: "redis",
     timestamp: new Date().toISOString(),
   });
 });

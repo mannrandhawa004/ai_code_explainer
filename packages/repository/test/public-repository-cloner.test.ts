@@ -171,4 +171,26 @@ describe("PublicRepositoryCloner", () => {
     });
     await expect(fs.readdir(tempRoot)).resolves.toEqual([]);
   });
+
+  it("rejects a cancelled clone before invoking Git", async () => {
+    const runner = createRunner();
+    const controller = new AbortController();
+    controller.abort("user cancelled");
+    const cloner = new PublicRepositoryCloner({ tempRoot }, runner);
+
+    await expect(
+      cloner.withClone(
+        {
+          repositoryUrl: "https://github.com/owner/repository",
+          signal: controller.signal,
+        },
+        async () => undefined,
+      ),
+    ).rejects.toMatchObject({
+      code: "CLONE_ABORTED",
+      message: "Repository cloning was cancelled",
+    });
+    expect(runner).not.toHaveBeenCalled();
+    await expect(fs.readdir(tempRoot)).resolves.toEqual([]);
+  });
 });

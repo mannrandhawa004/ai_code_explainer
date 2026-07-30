@@ -40,6 +40,22 @@ describe("database models", () => {
     expect(repository.stats.chunks).toBe(0);
   });
 
+  it("supports public-MVP repository records before GitHub metadata exists", async () => {
+    const repository = new RepositoryModel({
+      userId: new Types.ObjectId(),
+      owner: "owner",
+      name: "repository",
+      fullName: "owner/repository",
+      private: false,
+      selectedBranch: "HEAD",
+      defaultBranch: "HEAD",
+      status: "queued",
+    });
+
+    await expect(repository.validate()).resolves.toBeUndefined();
+    expect(repository.githubRepositoryId).toBeUndefined();
+  });
+
   it("rejects repository files with negative sizes", async () => {
     const file = new RepositoryFileModel({
       repositoryId: new Types.ObjectId(),
@@ -124,6 +140,13 @@ describe("database models", () => {
     const indexes = RepositoryModel.schema.indexes();
     expect(indexes).toContainEqual([
       { userId: 1, githubRepositoryId: 1 },
+      {
+        unique: true,
+        partialFilterExpression: { githubRepositoryId: { $type: "number" } },
+      },
+    ]);
+    expect(indexes).toContainEqual([
+      { userId: 1, fullName: 1 },
       { unique: true },
     ]);
   });

@@ -15,11 +15,13 @@ import { notFound } from "./middleware/not-found.js";
 import { createApiRouter } from "./routes/index.js";
 import type { AuthenticatedUserIdResolver } from "./routes/question.routes.js";
 import type { RepositoryQuestionServiceContract } from "./services/repository-question.service.js";
+import type { RepositoryImportServiceContract } from "./services/repository-import.service.js";
 
 export type CreateAppOptions = {
   logger?: Logger;
   disableRateLimit?: boolean;
   repositoryQuestionService?: RepositoryQuestionServiceContract;
+  repositoryImportService?: RepositoryImportServiceContract;
   resolveAuthenticatedUserId?: AuthenticatedUserIdResolver;
 };
 
@@ -93,6 +95,17 @@ export function createApp(options: CreateAppOptions = {}): Express {
         ...(options.repositoryQuestionService === undefined
           ? {}
           : { service: options.repositoryQuestionService }),
+        ...(options.resolveAuthenticatedUserId === undefined
+          ? {}
+          : {
+              resolveAuthenticatedUserId:
+                options.resolveAuthenticatedUserId,
+            }),
+      },
+      repository: {
+        ...(options.repositoryImportService === undefined
+          ? {}
+          : { service: options.repositoryImportService }),
         ...(options.resolveAuthenticatedUserId === undefined
           ? {}
           : {

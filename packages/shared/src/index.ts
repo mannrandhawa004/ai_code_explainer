@@ -1,2 +1,10 @@
-// Shared schemas, types, and constants are added with the features that own them.
-export {};
+export {
+  indexingJobName,
+  indexingQueueName,
+  indexingSteps,
+  parseRepositoryIndexingJobData,
+  type IndexingJobStep,
+  type RepositoryIndexingJobData,
+  type RepositoryIndexingJobProgress,
+  type RepositoryIndexingJobResult,
+} from "./repository-indexing.js";

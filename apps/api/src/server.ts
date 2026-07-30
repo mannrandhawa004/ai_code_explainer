@@ -9,6 +9,7 @@ import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { vectorStore } from "./config/vector-store.js";
+import { closeDefaultRepositoryIndexingQueue } from "./queues/repository-indexing.queue.js";
 
 const shutdownTimeoutMs = 10_000;
 
@@ -52,7 +53,10 @@ export async function startServer(): Promise<Server> {
         return;
       }
 
-      await disconnectDatabase();
+      await Promise.all([
+        closeDefaultRepositoryIndexingQueue(),
+        disconnectDatabase(),
+      ]);
       logger.info("API server stopped");
     });
   };

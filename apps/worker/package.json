@@ -4,8 +4,30 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prebuild": "npm run build --workspace @codebase-explainer/shared && npm run build --workspace @codebase-explainer/database && npm run build --workspace @codebase-explainer/vector-store",
     "build": "tsc -p tsconfig.json",
+    "predev": "npm run build --workspace @codebase-explainer/shared && npm run build --workspace @codebase-explainer/database && npm run build --workspace @codebase-explainer/vector-store",
     "dev": "tsx watch src/index.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "start": "node dist/index.js",
+    "pretest": "npm run build --workspace @codebase-explainer/shared && npm run build --workspace @codebase-explainer/database && npm run build --workspace @codebase-explainer/vector-store",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "pretypecheck": "npm run build --workspace @codebase-explainer/shared && npm run build --workspace @codebase-explainer/database && npm run build --workspace @codebase-explainer/vector-store",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit"
+  },
+  "dependencies": {
+    "@codebase-explainer/ai": "0.1.0",
+    "@codebase-explainer/database": "0.1.0",
+    "@codebase-explainer/repository": "0.1.0",
+    "@codebase-explainer/shared": "0.1.0",
+    "@codebase-explainer/vector-store": "0.1.0",
+    "bullmq": "^5.81.2",
+    "dotenv": "^17.4.2",
+    "ioredis": "^5.11.1",
+    "pino": "^10.3.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
   }
 }

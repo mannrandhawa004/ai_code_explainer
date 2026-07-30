@@ -23,7 +23,7 @@ export type RepositoryStatus = (typeof repositoryStatuses)[number];
 
 export interface Repository {
   userId: Types.ObjectId;
-  githubRepositoryId: number;
+  githubRepositoryId?: number;
   installationId?: number;
   owner: string;
   name: string;
@@ -56,7 +56,7 @@ const statsSchema = new Schema<Repository["stats"]>(
 const repositorySchema = new Schema<Repository>(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    githubRepositoryId: { type: Number, required: true },
+    githubRepositoryId: { type: Number },
     installationId: { type: Number },
     owner: { type: String, required: true, trim: true },
     name: { type: String, required: true, trim: true },
@@ -78,7 +78,14 @@ const repositorySchema = new Schema<Repository>(
   { timestamps: true, collection: "repositories" },
 );
 
-repositorySchema.index({ userId: 1, githubRepositoryId: 1 }, { unique: true });
+repositorySchema.index(
+  { userId: 1, githubRepositoryId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { githubRepositoryId: { $type: "number" } },
+  },
+);
+repositorySchema.index({ userId: 1, fullName: 1 }, { unique: true });
 repositorySchema.index({ userId: 1, status: 1 });
 repositorySchema.index({ userId: 1, updatedAt: -1 });
 
