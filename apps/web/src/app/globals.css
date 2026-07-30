@@ -1,0 +1,239 @@
+@import "tailwindcss";
+
+:root {
+  --canvas: #f4f6f1;
+  --surface: #ffffff;
+  --surface-soft: #eef1eb;
+  --ink: #0e1b18;
+  --ink-soft: #192a26;
+  --muted: #65716c;
+  --muted-strong: #82908a;
+  --line: #dce2da;
+  --line-strong: #c9d1c7;
+  --accent: #c8f169;
+  --accent-bright: #d7ff7e;
+  --accent-strong: #83b72d;
+  --accent-deep: #52791d;
+  --danger: #b33b4a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: var(--canvas);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button:not(:disabled),
+a {
+  cursor: pointer;
+}
+
+::selection {
+  background: rgba(200, 241, 105, 0.72);
+  color: var(--ink);
+}
+
+* {
+  scrollbar-color: #b8c1b7 transparent;
+  scrollbar-width: thin;
+}
+
+.answer-markdown {
+  color: #26332f;
+  font-size: 0.9375rem;
+  line-height: 1.75;
+}
+
+.answer-markdown > :first-child {
+  margin-top: 0;
+}
+
+.answer-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.answer-markdown h1,
+.answer-markdown h2,
+.answer-markdown h3 {
+  margin: 1.6em 0 0.55em;
+  color: var(--ink);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+}
+
+.answer-markdown h1 {
+  font-size: 1.35rem;
+}
+
+.answer-markdown h2 {
+  font-size: 1.15rem;
+}
+
+.answer-markdown h3 {
+  font-size: 1rem;
+}
+
+.answer-markdown p,
+.answer-markdown ul,
+.answer-markdown ol,
+.answer-markdown blockquote,
+.answer-markdown pre,
+.answer-markdown table {
+  margin: 0.9em 0;
+}
+
+.answer-markdown ul,
+.answer-markdown ol {
+  padding-left: 1.35rem;
+}
+
+.answer-markdown ul {
+  list-style: disc;
+}
+
+.answer-markdown ol {
+  list-style: decimal;
+}
+
+.answer-markdown li + li {
+  margin-top: 0.3rem;
+}
+
+.answer-markdown a {
+  color: var(--accent-deep);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: #a9c676;
+  text-underline-offset: 3px;
+}
+
+.answer-markdown blockquote {
+  border-left: 3px solid var(--accent-strong);
+  border-radius: 0 0.65rem 0.65rem 0;
+  background: #f3f7eb;
+  padding: 0.65rem 0.9rem;
+  color: #4d5b55;
+}
+
+.answer-markdown code:not(pre code) {
+  border: 1px solid #d9e0d6;
+  border-radius: 0.38rem;
+  background: #edf1ea;
+  padding: 0.12rem 0.32rem;
+  color: #30483a;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.84em;
+}
+
+.answer-markdown pre,
+.shiki-frame {
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.9rem;
+  background: #10201c;
+  padding: 1rem;
+  color: #e8eee8;
+  box-shadow: 0 12px 32px rgba(14, 27, 24, 0.12);
+}
+
+.shiki-frame .shiki {
+  margin: 0;
+  overflow: visible;
+  background: transparent !important;
+  padding: 0;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.8rem;
+  line-height: 1.65;
+}
+
+.answer-markdown table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.answer-markdown th,
+.answer-markdown td {
+  border: 1px solid var(--line);
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+}
+
+.answer-markdown th {
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 0.42;
+    transform: scale(0.86);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.thinking-dot {
+  animation: soft-pulse 1.25s ease-in-out infinite;
+}
+
+.thinking-dot:nth-child(2) {
+  animation-delay: 150ms;
+}
+
+.thinking-dot:nth-child(3) {
+  animation-delay: 300ms;
+}
+
+.message-enter {
+  animation: rise-in 280ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
