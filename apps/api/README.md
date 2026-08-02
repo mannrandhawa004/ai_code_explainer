@@ -27,6 +27,7 @@ GET /api/github/installations
 GET /api/github/repositories?installationId=:installationId
 GET /api/github/repositories/:owner/:repository/branches?installationId=:installationId
 POST /api/github/repositories/:owner/:repository/import
+POST /api/github/webhook
 POST /api/repositories/import
 POST /api/repositories/:id/index
 GET /api/repositories/:id/status
@@ -53,6 +54,8 @@ Private import request:
 ```
 
 GitHub access and refresh tokens are encrypted with AES-256-GCM and excluded from normal user queries. The browser receives only a signed HttpOnly session cookie. OAuth callback state is stored in a short-lived HttpOnly cookie and compared in constant time. See the root [GitHub App setup guide](../../docs/github-app-setup.md) for permissions and environment variables.
+
+The webhook endpoint is mounted before the normal JSON parser so `X-Hub-Signature-256` is checked against the exact raw UTF-8 body. It accepts only `application/json`, bounds payload size, validates GitHub delivery headers, and reduces supported events to strict queue data. `X-GitHub-Delivery` becomes the BullMQ job ID for replay protection; completed and failed deliveries are retained for 30 days. The API enforces an enqueue deadline below GitHub's ten-second response limit. Unsupported actions and events are safely acknowledged and ignored.
 
 The chat endpoint validates a server-authenticated user, checks repository ownership and indexing status before provider calls, retrieves only the repository's current tenant/branch/commit vectors, generates a grounded response, and persists the exchange with model, usage, and latency metadata. Authentication is fail-closed until an authentication middleware supplies `response.locals.authenticatedUserId`; request body fields and unverified headers are never accepted as identity.
 

@@ -63,6 +63,14 @@ const envSchema = z.object({
   GITHUB_PRIVATE_KEY: optionalTrimmedString.transform((value) =>
     value?.replaceAll("\\n", "\n"),
   ),
+  GITHUB_WEBHOOK_SECRET: optionalTrimmedString,
+  GITHUB_WEBHOOK_BODY_LIMIT: z.string().trim().min(1).default("5mb"),
+  GITHUB_WEBHOOK_ENQUEUE_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(500)
+    .max(8_000)
+    .default(5_000),
   GITHUB_CALLBACK_URL: z
     .url()
     .default("http://localhost:5000/api/auth/github/callback"),
@@ -143,6 +151,13 @@ if (configuredGitHubValues === githubRequiredValues.length) {
   }
 }
 
+if (
+  parsedEnvironment.GITHUB_WEBHOOK_SECRET !== undefined &&
+  parsedEnvironment.GITHUB_WEBHOOK_SECRET.length < 32
+) {
+  throw new Error("GITHUB_WEBHOOK_SECRET must contain at least 32 characters");
+}
+
 if (parsedEnvironment.NODE_ENV === "production") {
   if (configuredGitHubValues !== githubRequiredValues.length) {
     throw new Error("GitHub authentication must be configured in production");
@@ -152,6 +167,9 @@ if (parsedEnvironment.NODE_ENV === "production") {
   }
   if (!parsedEnvironment.GITHUB_CALLBACK_URL.startsWith("https://")) {
     throw new Error("GITHUB_CALLBACK_URL must use HTTPS in production");
+  }
+  if (!parsedEnvironment.GITHUB_WEBHOOK_SECRET) {
+    throw new Error("GITHUB_WEBHOOK_SECRET must be configured in production");
   }
 }
 
@@ -194,5 +212,24 @@ export function getGitHubAuthenticationConfiguration():
     encryptionKey: parsedEnvironment.ENCRYPTION_KEY as string,
     secureCookies: parsedEnvironment.NODE_ENV === "production",
     frontendUrl: parsedEnvironment.FRONTEND_URL,
+  };
+}
+
+export type GitHubWebhookConfiguration = {
+  secret: string;
+  bodyLimit: string;
+  enqueueTimeoutMs: number;
+};
+
+export function getGitHubWebhookConfiguration():
+  | GitHubWebhookConfiguration
+  | undefined {
+  if (!parsedEnvironment.GITHUB_WEBHOOK_SECRET) {
+    return undefined;
+  }
+  return {
+    secret: parsedEnvironment.GITHUB_WEBHOOK_SECRET,
+    bodyLimit: parsedEnvironment.GITHUB_WEBHOOK_BODY_LIMIT,
+    enqueueTimeoutMs: parsedEnvironment.GITHUB_WEBHOOK_ENQUEUE_TIMEOUT_MS,
   };
 }

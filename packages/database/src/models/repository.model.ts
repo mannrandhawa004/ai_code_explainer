@@ -25,6 +25,7 @@ export interface Repository {
   userId: Types.ObjectId;
   githubRepositoryId?: number;
   installationId?: number;
+  githubAccessRevokedAt?: Date;
   owner: string;
   name: string;
   fullName: string;
@@ -58,6 +59,7 @@ const repositorySchema = new Schema<Repository>(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     githubRepositoryId: { type: Number },
     installationId: { type: Number },
+    githubAccessRevokedAt: { type: Date },
     owner: { type: String, required: true, trim: true },
     name: { type: String, required: true, trim: true },
     fullName: { type: String, required: true, trim: true },

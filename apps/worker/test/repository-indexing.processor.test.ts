@@ -246,6 +246,29 @@ describe("RepositoryIndexingProcessor", () => {
     expect(dependencies.cloner.withClone).not.toHaveBeenCalled();
   });
 
+  it("fails closed when webhook processing revoked repository access", async () => {
+    const persistence = createPersistence();
+    vi.mocked(persistence.findRepository).mockResolvedValue({
+      id: repositoryId,
+      userId,
+      fullName: "owner/repository",
+      private: true,
+      githubRepositoryId: 9001,
+      installationId: 501,
+      githubAccessRevokedAt: new Date("2026-08-02T12:00:00.000Z"),
+      selectedBranch: "main",
+    });
+    const dependencies = createDependencies(persistence);
+
+    await expect(
+      createProcessor(dependencies).process(createJob(), jobData),
+    ).rejects.toMatchObject({
+      code: "REPOSITORY_ACCESS_DENIED",
+      retryable: false,
+    });
+    expect(dependencies.cloner.withClone).not.toHaveBeenCalled();
+  });
+
   it("mints a repository-scoped token immediately before cloning a private repository", async () => {
     const persistence = createPersistence();
     vi.mocked(persistence.findRepository).mockResolvedValue({

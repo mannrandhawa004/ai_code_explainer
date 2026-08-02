@@ -224,6 +224,7 @@ export class RepositoryImportService implements RepositoryImportServiceContract 
         repository.owner = normalized.owner;
         repository.name = normalized.name;
         repository.status = "queued";
+        repository.set("githubAccessRevokedAt", undefined);
         repository.set("errorMessage", undefined);
         if (branch !== undefined) {
           repository.selectedBranch = branch;
@@ -311,6 +312,7 @@ export class RepositoryImportService implements RepositoryImportServiceContract 
         repository.name = authorized.name;
         repository.fullName = authorized.fullName;
         repository.private = authorized.private;
+        repository.set("githubAccessRevokedAt", undefined);
         repository.selectedBranch = selectedBranch;
         repository.defaultBranch = authorized.defaultBranch;
         repository.status = "queued";
@@ -398,6 +400,7 @@ export class RepositoryImportService implements RepositoryImportServiceContract 
     }
 
     repository.status = "queued";
+    repository.set("githubAccessRevokedAt", undefined);
     repository.set("errorMessage", undefined);
     await repository.save();
     return this.enqueueRepository(

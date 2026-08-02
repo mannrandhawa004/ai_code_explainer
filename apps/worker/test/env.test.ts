@@ -9,6 +9,7 @@ describe("worker environment", () => {
     expect(result.REDIS_URL).toBe("redis://localhost:6379");
     expect(result.INDEXING_CONCURRENCY).toBe(2);
     expect(result.MAX_REPOSITORY_FILES).toBe(5_000);
+    expect(result.GITHUB_WEBHOOK_CONCURRENCY).toBe(1);
   });
 
   it("requires an encrypted Redis connection in production", () => {

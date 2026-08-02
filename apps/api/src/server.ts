@@ -10,6 +10,7 @@ import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { vectorStore } from "./config/vector-store.js";
 import { closeDefaultRepositoryIndexingQueue } from "./queues/repository-indexing.queue.js";
+import { closeDefaultGitHubWebhookQueue } from "./queues/github-webhook.queue.js";
 
 const shutdownTimeoutMs = 10_000;
 
@@ -54,6 +55,7 @@ export async function startServer(): Promise<Server> {
       }
 
       await Promise.all([
+        closeDefaultGitHubWebhookQueue(),
         closeDefaultRepositoryIndexingQueue(),
         disconnectDatabase(),
       ]);

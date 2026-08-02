@@ -6,15 +6,22 @@ import type { Worker } from "bullmq";
 import type { Redis } from "ioredis";
 
 import type {
+  GitHubWebhookJobData,
+  GitHubWebhookJobResult,
   RepositoryIndexingJobData,
   RepositoryIndexingJobResult,
 } from "@codebase-explainer/shared";
-import { indexingJobName } from "@codebase-explainer/shared";
+import { githubWebhookJobName, indexingJobName } from "@codebase-explainer/shared";
 
 import { env, type WorkerEnvironment } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { createWorkerRedisConnection } from "./config/redis.js";
 import { createDefaultRepositoryIndexingProcessor } from "./jobs/repository-indexing.processor.js";
+import { GitHubWebhookProcessor } from "./jobs/github-webhook.processor.js";
+import { BullMqRepositoryIndexingProducer } from "./queues/repository-indexing.producer.js";
+import { GitHubInstallationTokenProvider } from "./services/github-installation-token.service.js";
+import { MongoGitHubWebhookRepositoryOperations } from "./services/github-webhook-repository.service.js";
+import { createGitHubWebhookWorker } from "./github-webhook.worker.js";
 import { createRepositoryIndexingWorker } from "./worker.js";
 
 export type WorkerRuntime = {
@@ -23,7 +30,13 @@ export type WorkerRuntime = {
     RepositoryIndexingJobResult,
     typeof indexingJobName
   >;
+  webhookWorker: Worker<
+    GitHubWebhookJobData,
+    GitHubWebhookJobResult,
+    typeof githubWebhookJobName
+  >;
   connection: Redis;
+  webhookConnection: Redis;
   close(force?: boolean): Promise<void>;
 };
 
@@ -35,37 +48,96 @@ export async function startWorkerRuntime(
   });
 
   const connection = createWorkerRedisConnection(environment.REDIS_URL);
+  const webhookConnection = createWorkerRedisConnection(
+    environment.REDIS_URL,
+    "codebase-explainer-github-webhook-worker",
+  );
   connection.on("error", (error) => {
     logger.error({ error }, "Worker Redis connection error");
   });
+  webhookConnection.on("error", (error) => {
+    logger.error({ error }, "GitHub webhook worker Redis connection error");
+  });
+
+  let indexingProducer: BullMqRepositoryIndexingProducer | undefined;
+  let repositoryWorker: ReturnType<
+    typeof createRepositoryIndexingWorker
+  > | undefined;
+  let githubWebhookWorker: ReturnType<
+    typeof createGitHubWebhookWorker
+  > | undefined;
 
   try {
-    await connection.connect();
-    await connection.ping();
+    await Promise.all([connection.connect(), webhookConnection.connect()]);
+    await Promise.all([connection.ping(), webhookConnection.ping()]);
     const processor = createDefaultRepositoryIndexingProcessor(environment);
-    const worker = createRepositoryIndexingWorker({
+    const createdRepositoryWorker = createRepositoryIndexingWorker({
       connection,
       processor,
       concurrency: environment.INDEXING_CONCURRENCY,
     });
+    repositoryWorker = createdRepositoryWorker;
+    const createdIndexingProducer = new BullMqRepositoryIndexingProducer(
+      environment.REDIS_URL,
+    );
+    indexingProducer = createdIndexingProducer;
+    const repositoryOperations = new MongoGitHubWebhookRepositoryOperations(
+      createdIndexingProducer,
+    );
+    const installationTokens =
+      environment.GITHUB_APP_ID && environment.GITHUB_PRIVATE_KEY
+        ? new GitHubInstallationTokenProvider(
+            environment.GITHUB_APP_ID,
+            environment.GITHUB_PRIVATE_KEY,
+          )
+        : undefined;
+    const webhookProcessor = new GitHubWebhookProcessor(
+      repositoryOperations,
+      installationTokens,
+    );
+    const createdWebhookWorker = createGitHubWebhookWorker({
+      connection: webhookConnection,
+      processor: webhookProcessor,
+      concurrency: environment.GITHUB_WEBHOOK_CONCURRENCY,
+    });
+    githubWebhookWorker = createdWebhookWorker;
 
     let closePromise: Promise<void> | undefined;
     const close = (force = false): Promise<void> => {
       closePromise ??= (async () => {
-        await worker.close(force);
-        await connection.quit();
+        await Promise.all([
+          createdRepositoryWorker.close(force),
+          createdWebhookWorker.close(force),
+        ]);
+        await createdIndexingProducer.close();
+        await Promise.all([connection.quit(), webhookConnection.quit()]);
         await disconnectDatabase();
       })();
       return closePromise;
     };
 
     logger.info(
-      { concurrency: environment.INDEXING_CONCURRENCY },
-      "Repository indexing worker started",
+      {
+        indexingConcurrency: environment.INDEXING_CONCURRENCY,
+        webhookConcurrency: environment.GITHUB_WEBHOOK_CONCURRENCY,
+      },
+      "Repository indexing and GitHub webhook workers started",
     );
-    return { worker, connection, close };
+    return {
+      worker: createdRepositoryWorker,
+      webhookWorker: createdWebhookWorker,
+      connection,
+      webhookConnection,
+      close,
+    };
   } catch (error) {
+    await Promise.allSettled([
+      repositoryWorker?.close(true),
+      githubWebhookWorker?.close(true),
+      indexingProducer?.close(),
+    ]);
     connection.disconnect();
+    webhookConnection.disconnect();
     await disconnectDatabase();
     throw error;
   }
@@ -85,6 +157,7 @@ export async function runWorker(environment: WorkerEnvironment = env): Promise<v
     const forcedShutdown = setTimeout(() => {
       logger.error("Worker graceful shutdown timed out; forcing close");
       runtime.connection.disconnect();
+      runtime.webhookConnection.disconnect();
       process.exit(1);
     }, environment.WORKER_SHUTDOWN_TIMEOUT_MS);
     forcedShutdown.unref();
@@ -92,7 +165,7 @@ export async function runWorker(environment: WorkerEnvironment = env): Promise<v
     try {
       await runtime.close();
       clearTimeout(forcedShutdown);
-      logger.info("Repository indexing worker stopped");
+      logger.info("Repository indexing and GitHub webhook workers stopped");
     } catch (error) {
       clearTimeout(forcedShutdown);
       logger.error({ error }, "Repository indexing worker failed to stop");
