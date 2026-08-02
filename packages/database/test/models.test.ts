@@ -65,6 +65,25 @@ describe("database models", () => {
     expect(repository.githubRepositoryId).toBeUndefined();
   });
 
+  it("persists a GitHub access revocation guard", async () => {
+    const revokedAt = new Date("2026-08-02T12:00:00.000Z");
+    const repository = new RepositoryModel({
+      userId: new Types.ObjectId(),
+      githubRepositoryId: 101,
+      installationId: 501,
+      githubAccessRevokedAt: revokedAt,
+      owner: "owner",
+      name: "repository",
+      fullName: "owner/repository",
+      private: true,
+      selectedBranch: "main",
+      defaultBranch: "main",
+    });
+
+    await expect(repository.validate()).resolves.toBeUndefined();
+    expect(repository.githubAccessRevokedAt).toEqual(revokedAt);
+  });
+
   it("rejects repository files with negative sizes", async () => {
     const file = new RepositoryFileModel({
       repositoryId: new Types.ObjectId(),

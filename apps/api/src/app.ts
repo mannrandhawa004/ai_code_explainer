@@ -15,9 +15,11 @@ import { errorHandler } from "./middleware/error-handler.js";
 import { notFound } from "./middleware/not-found.js";
 import { createSessionAuthMiddleware } from "./middleware/session-auth.js";
 import { createApiRouter } from "./routes/index.js";
+import { createGitHubWebhookRouter } from "./routes/github-webhook.routes.js";
 import type { AuthenticatedUserIdResolver } from "./routes/question.routes.js";
 import type { GitHubAuthServiceContract } from "./services/github-auth.service.js";
 import type { GitHubRepositoryServiceContract } from "./services/github-repository.service.js";
+import type { GitHubWebhookServiceContract } from "./services/github-webhook.service.js";
 import type { RepositoryQuestionServiceContract } from "./services/repository-question.service.js";
 import type { RepositoryImportServiceContract } from "./services/repository-import.service.js";
 
@@ -28,6 +30,7 @@ export type CreateAppOptions = {
   repositoryImportService?: RepositoryImportServiceContract;
   githubAuthService?: GitHubAuthServiceContract;
   githubRepositoryService?: GitHubRepositoryServiceContract;
+  githubWebhookService?: GitHubWebhookServiceContract;
   resolveAuthenticatedUserId?: AuthenticatedUserIdResolver;
 };
 
@@ -78,7 +81,9 @@ export function createApp(options: CreateAppOptions = {}): Express {
         limit: env.API_RATE_LIMIT_MAX,
         standardHeaders: "draft-8",
         legacyHeaders: false,
-        skip: (request) => request.path === "/api/health",
+        skip: (request) =>
+          request.path === "/api/health" ||
+          request.path === "/api/github/webhook",
         handler(_request, response) {
           response.status(429).json({
             error: {
@@ -90,6 +95,15 @@ export function createApp(options: CreateAppOptions = {}): Express {
       }),
     );
   }
+
+  app.use(
+    "/api",
+    createGitHubWebhookRouter(
+      options.githubWebhookService === undefined
+        ? {}
+        : { service: options.githubWebhookService },
+    ),
+  );
 
   app.use(express.json({ limit: env.API_JSON_LIMIT }));
   app.use(express.urlencoded({ extended: false, limit: env.API_JSON_LIMIT }));

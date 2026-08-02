@@ -40,6 +40,12 @@ const workerEnvSchema = z.object({
     .positive()
     .default(10_000),
   INDEXING_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(2),
+  GITHUB_WEBHOOK_CONCURRENCY: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(8)
+    .default(1),
   MAX_REPOSITORY_FILES: z.coerce
     .number()
     .int()

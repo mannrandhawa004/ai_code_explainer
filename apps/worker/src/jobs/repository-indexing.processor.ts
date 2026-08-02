@@ -35,6 +35,7 @@ import { env, type WorkerEnvironment } from "../config/env.js";
 import {
   MongoIndexingPersistence,
   IndexingCancellationRequestedError,
+  RepositoryAccessRevokedError,
   type IndexableRepository,
   type IndexingPersistence,
   type PersistedFileSummary,
@@ -205,6 +206,15 @@ function normalizeIndexingError(
     );
   }
 
+  if (error instanceof RepositoryAccessRevokedError) {
+    return new RepositoryIndexingError(
+      "REPOSITORY_ACCESS_DENIED",
+      "GitHub repository access has been revoked",
+      false,
+      { cause: error },
+    );
+  }
+
   if (signal?.aborted) {
     return new RepositoryIndexingError(
       "INDEXING_CANCELLED",
@@ -293,6 +303,14 @@ function validateRepository(
     throw new RepositoryIndexingError(
       "REPOSITORY_ACCESS_DENIED",
       "Repository indexing ownership could not be verified",
+      false,
+    );
+  }
+
+  if (repository.githubAccessRevokedAt !== undefined) {
+    throw new RepositoryIndexingError(
+      "REPOSITORY_ACCESS_DENIED",
+      "GitHub repository access has been revoked",
       false,
     );
   }
@@ -452,6 +470,10 @@ export class RepositoryIndexingProcessor {
       );
     } catch (error) {
       const normalized = normalizeIndexingError(error, signal);
+
+      if (error instanceof RepositoryAccessRevokedError) {
+        throw normalized;
+      }
 
       try {
         if (normalized.code === "INDEXING_CANCELLED") {

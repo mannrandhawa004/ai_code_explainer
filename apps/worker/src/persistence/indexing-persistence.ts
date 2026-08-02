@@ -14,6 +14,7 @@ export type IndexableRepository = {
   private: boolean;
   githubRepositoryId?: number;
   installationId?: number;
+  githubAccessRevokedAt?: Date;
   selectedBranch: string;
   lastIndexedCommit?: string;
 };
@@ -83,6 +84,14 @@ export class IndexingCancellationRequestedError extends Error {
   }
 }
 
+export class RepositoryAccessRevokedError extends Error {
+  override readonly name = "RepositoryAccessRevokedError";
+
+  constructor() {
+    super("GitHub repository access was revoked");
+  }
+}
+
 function objectId(value: string): Types.ObjectId {
   if (!/^[0-9a-f]{24}$/u.test(value)) {
     throw new Error("Repository identifier is invalid");
@@ -91,7 +100,11 @@ function objectId(value: string): Types.ObjectId {
 }
 
 function repositoryFilter(repositoryId: string, userId: string) {
-  return { _id: objectId(repositoryId), userId: objectId(userId) };
+  return {
+    _id: objectId(repositoryId),
+    userId: objectId(userId),
+    githubAccessRevokedAt: trusted({ $exists: false }),
+  };
 }
 
 async function requireRepositoryUpdate(
@@ -105,6 +118,14 @@ async function requireRepositoryUpdate(
   ).exec();
 
   if (result.matchedCount !== 1) {
+    const revoked = await RepositoryModel.exists({
+      _id: objectId(repositoryId),
+      userId: objectId(userId),
+      githubAccessRevokedAt: trusted({ $exists: true }),
+    });
+    if (revoked) {
+      throw new RepositoryAccessRevokedError();
+    }
     throw new Error("Repository was not found for the indexing owner");
   }
 }
@@ -116,6 +137,7 @@ export class MongoIndexingPersistence implements IndexingPersistence {
     const repository = await RepositoryModel.findById(objectId(repositoryId))
       .select(
         "userId fullName private githubRepositoryId installationId " +
+          "githubAccessRevokedAt " +
           "selectedBranch lastIndexedCommit",
       )
       .lean()
@@ -136,6 +158,9 @@ export class MongoIndexingPersistence implements IndexingPersistence {
       ...(repository.installationId === undefined
         ? {}
         : { installationId: repository.installationId }),
+      ...(repository.githubAccessRevokedAt === undefined
+        ? {}
+        : { githubAccessRevokedAt: repository.githubAccessRevokedAt }),
       selectedBranch: repository.selectedBranch,
       ...(repository.lastIndexedCommit === undefined
         ? {}

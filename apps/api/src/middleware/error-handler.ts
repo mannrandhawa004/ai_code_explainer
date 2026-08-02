@@ -20,6 +20,14 @@ function isInvalidJson(error: unknown): boolean {
   );
 }
 
+function isPayloadTooLarge(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "status" in error &&
+    (error as Error & { status: number }).status === 413
+  );
+}
+
 export const errorHandler: ErrorRequestHandler = (
   error: unknown,
   request,
@@ -28,7 +36,9 @@ export const errorHandler: ErrorRequestHandler = (
 ) => {
   const normalizedError = isInvalidJson(error)
     ? new AppError(400, "INVALID_JSON", "The request body contains invalid JSON")
-    : error;
+    : isPayloadTooLarge(error)
+      ? new AppError(413, "PAYLOAD_TOO_LARGE", "The request body is too large")
+      : error;
 
   const isOperational = normalizedError instanceof AppError;
   const statusCode = isOperational ? normalizedError.statusCode : 500;

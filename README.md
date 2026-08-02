@@ -45,13 +45,13 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 15. Add BullMQ worker
 - [x] 16. Add Tree-sitter
 - [x] 17. Add GitHub App
-- [ ] 18. Add webhooks
+- [x] 18. Add webhooks
 - [ ] 19. Add incremental indexing
 - [ ] 20. Add evaluations
 
 ## Current state
 
-Step 17 adds GitHub App user authentication, HttpOnly API sessions, encrypted and refreshable user tokens, authorized installation/repository/branch discovery, and private-repository imports. Private jobs carry no credentials: the worker verifies persisted GitHub metadata, mints a short-lived installation token scoped to one repository with read-only contents permission, injects it through a temporary Git configuration, and removes the credential and clone in all outcomes. See [GitHub App setup](docs/github-app-setup.md).
+Step 18 adds a signature-verified GitHub webhook inbox and a dedicated BullMQ webhook worker. The API verifies the exact raw body, validates and minimizes supported payloads, and uses `X-GitHub-Delivery` as the durable replay-protection job ID before responding. Branch pushes revalidate installation access and trigger full reindexing for matching imported branches. Installation suspension/deletion and repository-removal events durably revoke local access and cancel active jobs. Step 19 will replace full reindexing with changed-file updates. See [GitHub App and webhook setup](docs/github-app-setup.md).
 
 ## Prerequisites
 

@@ -6,12 +6,17 @@ import pino from "pino";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  githubWebhookJobName,
+  githubWebhookQueueName,
   indexingJobName,
   indexingQueueName,
   type RepositoryIndexingJobData,
   type RepositoryIndexingJobResult,
+  type GitHubWebhookJobData,
+  type GitHubWebhookJobResult,
 } from "@codebase-explainer/shared";
 
+import { createGitHubWebhookWorker } from "../src/github-webhook.worker.js";
 import { createRepositoryIndexingWorker } from "../src/worker.js";
 
 const redisTestUrl = process.env.REDIS_TEST_URL;
@@ -79,6 +84,72 @@ describeWithRedis("BullMQ worker integration", () => {
         data,
         expect.any(AbortSignal),
       );
+    } finally {
+      await worker.close(true);
+      await events.close();
+      await queue.obliterate({ force: true });
+      await queue.close();
+      await Promise.all([
+        producerConnection.quit(),
+        workerConnection.quit(),
+        eventConnection.quit(),
+      ]);
+    }
+  }, 20_000);
+
+  it("moves a minimized GitHub delivery through the webhook worker", async () => {
+    const prefix = `codebase-explainer-webhook-test-${randomUUID()}`;
+    const producerConnection = new Redis(redisTestUrl as string, {
+      maxRetriesPerRequest: 1,
+    });
+    const workerConnection = new Redis(redisTestUrl as string, {
+      maxRetriesPerRequest: null,
+    });
+    const eventConnection = new Redis(redisTestUrl as string, {
+      maxRetriesPerRequest: null,
+    });
+    const queue = new Queue<
+      GitHubWebhookJobData,
+      GitHubWebhookJobResult,
+      typeof githubWebhookJobName
+    >(githubWebhookQueueName, { connection: producerConnection, prefix });
+    const events = new QueueEvents(githubWebhookQueueName, {
+      connection: eventConnection,
+      prefix,
+    });
+    const process = vi.fn().mockImplementation(async (data: GitHubWebhookJobData) => ({
+      deliveryId: data.deliveryId,
+      kind: data.kind,
+      matchedRepositories: 0,
+      queuedRepositories: 0,
+      deduplicatedRepositories: 0,
+      revokedRepositories: 0,
+    }));
+    const worker = createGitHubWebhookWorker({
+      connection: workerConnection,
+      processor: { process },
+      concurrency: 1,
+      prefix,
+      logger: pino({ level: "silent" }),
+    });
+
+    try {
+      await Promise.all([worker.waitUntilReady(), events.waitUntilReady()]);
+      const data: GitHubWebhookJobData = {
+        kind: "installation_revoked",
+        deliveryId: randomUUID(),
+        payloadSha256: "b".repeat(64),
+        receivedAt: new Date().toISOString(),
+        installationId: 501,
+      };
+      const job = await queue.add(githubWebhookJobName, data, {
+        jobId: data.deliveryId,
+      });
+      await expect(job.waitUntilFinished(events, 10_000)).resolves.toMatchObject({
+        deliveryId: data.deliveryId,
+        kind: "installation_revoked",
+      });
+      expect(process).toHaveBeenCalledWith(data);
     } finally {
       await worker.close(true);
       await events.close();
