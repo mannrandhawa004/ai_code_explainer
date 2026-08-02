@@ -10,6 +10,7 @@ import {
   RepositoryFileFilter,
   RepositoryFileFilterError,
   RepositoryLineBasedChunker,
+  RepositoryTreeSitterChunker,
   RepositoryScanError,
   normalizePublicGitHubRepository,
   type ClonedPublicRepository,
@@ -406,6 +407,9 @@ export class RepositoryIndexingProcessor {
             language: file.language,
             contentHash: file.contentHash,
             sourceBytes: file.sourceBytes,
+            imports: file.imports,
+            exports: file.exports,
+            symbols: file.symbols,
           }));
           await this.dependencies.persistence.complete({
             bullJobId: job.id,
@@ -538,7 +542,7 @@ export function createDefaultRepositoryIndexingProcessor(
           : { tempRoot: environment.TEMP_REPOSITORY_DIR }),
       }),
       filter: new RepositoryFileFilter(),
-      chunker: new RepositoryLineBasedChunker(),
+      chunker: new RepositoryTreeSitterChunker(),
       embedder: createOpenAICodeChunkEmbeddingServiceFromEnv(process.env),
       vectorCollection,
       chunkStore: new QdrantCodeChunkStore(vectorConfig, vectorCollection.client),

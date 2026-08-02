@@ -3,10 +3,10 @@
 The BullMQ worker consumes `index-repository` jobs from the `repository-indexing` queue and runs the public-repository MVP pipeline:
 
 ```text
-clone -> scan/filter -> line chunks -> OpenAI embeddings -> Qdrant -> MongoDB ready state
+clone -> scan/filter -> Tree-sitter symbol chunks (line fallback) -> OpenAI embeddings -> Qdrant -> MongoDB ready state
 ```
 
-The worker never executes repository code. Clone data lives in a bounded temporary directory and is deleted after success, failure, or cancellation. Every job validates repository ownership and URL identity before cloning, reports structured progress, retries transient dependency failures up to three times, treats unsafe input and repository-limit failures as unrecoverable, and supports cancellation between phases.
+The worker never executes repository code. Clone data lives in a bounded temporary directory and is deleted after success, failure, or cancellation. Every job validates repository ownership and URL identity before cloning, reports structured progress, retries transient dependency failures up to three times, treats unsafe input and repository-limit failures as unrecoverable, and supports cancellation between phases. Completed indexing persists file imports/exports and normalized symbol/reference records in MongoDB.
 
 ## Commands
 

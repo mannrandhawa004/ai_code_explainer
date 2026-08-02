@@ -2,6 +2,7 @@ import {
   IndexingJobModel,
   RepositoryFileModel,
   RepositoryModel,
+  SymbolModel,
   type RepositoryStatus,
 } from "@codebase-explainer/database";
 import { Types, trusted } from "mongoose";
@@ -20,6 +21,18 @@ export type PersistedFileSummary = {
   language: string;
   contentHash: string;
   sourceBytes: number;
+  imports: readonly string[];
+  exports: readonly string[];
+  symbols: readonly PersistedSymbolSummary[];
+};
+
+export type PersistedSymbolSummary = {
+  name: string;
+  type: string;
+  startLine: number;
+  endLine: number;
+  imports: readonly string[];
+  references: readonly string[];
 };
 
 export type IndexingProgressPersistence = {
@@ -183,12 +196,13 @@ export class MongoIndexingPersistence implements IndexingPersistence {
   }
 
   async complete(input: IndexingCompletionPersistence): Promise<void> {
+    const repositoryId = objectId(input.repositoryId);
     if (input.files.length > 0) {
       await RepositoryFileModel.bulkWrite(
         input.files.map((file) => ({
           updateOne: {
             filter: {
-              repositoryId: objectId(input.repositoryId),
+              repositoryId,
               branch: input.branch,
               path: file.filePath,
             },
@@ -198,9 +212,11 @@ export class MongoIndexingPersistence implements IndexingPersistence {
                 language: file.language,
                 hash: file.contentHash,
                 size: file.sourceBytes,
-                imports: [],
-                exports: [],
-                symbols: [],
+                imports: [...file.imports],
+                exports: [...file.exports],
+                symbols: [
+                  ...new Set(file.symbols.map((symbol) => symbol.name)),
+                ],
               },
             },
             upsert: true,
@@ -208,6 +224,47 @@ export class MongoIndexingPersistence implements IndexingPersistence {
         })),
         { ordered: false },
       );
+
+      const persistedFiles = await RepositoryFileModel.find({
+        repositoryId,
+        branch: input.branch,
+        path: trusted({ $in: input.files.map((file) => file.filePath) }),
+      })
+        .select("_id path")
+        .lean()
+        .exec();
+      const fileIdsByPath = new Map(
+        persistedFiles.map((file) => [file.path, file._id]),
+      );
+      if (fileIdsByPath.size !== input.files.length) {
+        throw new Error("Not all indexed repository files were persisted");
+      }
+
+      const fileIds = [...fileIdsByPath.values()];
+      await SymbolModel.deleteMany({
+        repositoryId,
+        fileId: trusted({ $in: fileIds }),
+      }).exec();
+
+      const symbols = input.files.flatMap((file) => {
+        const fileId = fileIdsByPath.get(file.filePath);
+        if (fileId === undefined) {
+          throw new Error(`Indexed repository file ${file.filePath} is missing`);
+        }
+        return file.symbols.map((symbol) => ({
+          repositoryId,
+          fileId,
+          name: symbol.name,
+          type: symbol.type,
+          startLine: symbol.startLine,
+          endLine: symbol.endLine,
+          imports: [...symbol.imports],
+          references: [...symbol.references],
+        }));
+      });
+      if (symbols.length > 0) {
+        await SymbolModel.insertMany(symbols, { ordered: true });
+      }
     }
 
     await requireRepositoryUpdate(input.repositoryId, input.userId, {

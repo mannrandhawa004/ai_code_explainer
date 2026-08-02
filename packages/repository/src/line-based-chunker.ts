@@ -45,6 +45,7 @@ export type CodeChunk = {
   contentHash: string;
   imports: string[];
   exports: string[];
+  references?: string[];
 };
 
 export type LineChunkSourceMetadata = {
@@ -54,11 +55,17 @@ export type LineChunkSourceMetadata = {
   commitSha: string;
   filePath: string;
   language?: string;
+  sourceStartLine?: number;
+  symbolType?: string;
+  symbolName?: string;
+  imports?: readonly string[];
+  exports?: readonly string[];
+  references?: readonly string[];
 };
 
-export type RepositoryChunkContext = Omit<
+export type RepositoryChunkContext = Pick<
   LineChunkSourceMetadata,
-  "filePath" | "language"
+  "userId" | "repositoryId" | "branch" | "commitSha"
 >;
 
 export type LineBasedChunkerOptions = {
@@ -85,6 +92,27 @@ export type ChunkedRepositoryFileSummary = {
   sourceCharacters: number;
   contentHash: string;
   chunkCount: number;
+  chunkingStrategy: "line" | "tree_sitter" | "line_fallback";
+  imports: string[];
+  exports: string[];
+  symbols: ChunkedRepositorySymbol[];
+};
+
+export type ChunkedRepositorySymbol = {
+  name: string;
+  type: string;
+  startLine: number;
+  endLine: number;
+  imports: string[];
+  references: string[];
+};
+
+export type SourceFileChunkingResult = {
+  chunks: CodeChunk[];
+  chunkingStrategy: ChunkedRepositoryFileSummary["chunkingStrategy"];
+  imports: string[];
+  exports: string[];
+  symbols: ChunkedRepositorySymbol[];
 };
 
 export type RepositoryChunkingResult = {
@@ -201,6 +229,24 @@ function validateSourceMetadata(metadata: LineChunkSourceMetadata): void {
   if (metadata.language !== undefined) {
     assertMetadataValue(metadata.language, "language");
   }
+  if (metadata.sourceStartLine !== undefined) {
+    assertPositiveInteger(metadata.sourceStartLine, "sourceStartLine");
+  }
+  if (metadata.symbolType !== undefined) {
+    assertMetadataValue(metadata.symbolType, "symbolType");
+  }
+  if (metadata.symbolName !== undefined) {
+    assertMetadataValue(metadata.symbolName, "symbolName");
+  }
+  for (const [fieldName, values] of [
+    ["imports", metadata.imports],
+    ["exports", metadata.exports],
+    ["references", metadata.references],
+  ] as const) {
+    for (const value of values ?? []) {
+      assertMetadataValue(value, fieldName);
+    }
+  }
 }
 
 function validateRepositoryContext(context: RepositoryChunkContext): void {
@@ -312,10 +358,11 @@ export class LineBasedChunker {
       const end = Math.min(start + chunkSizeLines, lines.length);
       const chunkContent = lines.slice(start, end).join("\n");
       const contentHash = hashContent(chunkContent);
-      const startLine = start + 1;
-      const endLine = end;
+      const sourceStartLine = metadata.sourceStartLine ?? 1;
+      const startLine = sourceStartLine + start;
+      const endLine = sourceStartLine + end - 1;
       const chunkIndex = chunks.length;
-      const identity = [
+      const identityParts: Array<string | number> = [
         metadata.userId,
         metadata.repositoryId,
         metadata.branch,
@@ -324,7 +371,11 @@ export class LineBasedChunker {
         startLine,
         endLine,
         contentHash,
-      ].join("\0");
+      ];
+      if (metadata.symbolType !== undefined || metadata.symbolName !== undefined) {
+        identityParts.push(metadata.symbolType ?? "", metadata.symbolName ?? "");
+      }
+      const identity = identityParts.join("\0");
 
       chunks.push({
         id: createDeterministicChunkId(identity),
@@ -334,13 +385,22 @@ export class LineBasedChunker {
         commitSha: metadata.commitSha,
         filePath: metadata.filePath,
         language,
+        ...(metadata.symbolType === undefined
+          ? {}
+          : { symbolType: metadata.symbolType }),
+        ...(metadata.symbolName === undefined
+          ? {}
+          : { symbolName: metadata.symbolName }),
         startLine,
         endLine,
         chunkIndex,
         content: chunkContent,
         contentHash,
-        imports: [],
-        exports: [],
+        imports: [...(metadata.imports ?? [])],
+        exports: [...(metadata.exports ?? [])],
+        ...(metadata.references === undefined
+          ? {}
+          : { references: [...metadata.references] }),
       });
 
       if (end === lines.length) {
@@ -434,7 +494,7 @@ export class RepositoryLineBasedChunker {
           }
 
           const language = detectRepositorySourceLanguage(file.relativePath);
-          const chunks = this.lineChunker.chunk(
+          const sourceResult = this.chunkSource(
             content,
             {
               ...context,
@@ -443,6 +503,7 @@ export class RepositoryLineBasedChunker {
             },
             options.lineChunking,
           );
+          const { chunks } = sourceResult;
 
           totalSourceBytes += contentBytes.byteLength;
           totalSourceCharacters += content.length;
@@ -478,6 +539,10 @@ export class RepositoryLineBasedChunker {
               sourceCharacters: content.length,
               contentHash: hashContent(content),
               chunkCount: chunks.length,
+              chunkingStrategy: sourceResult.chunkingStrategy,
+              imports: sourceResult.imports,
+              exports: sourceResult.exports,
+              symbols: sourceResult.symbols,
             } satisfies ChunkedRepositoryFileSummary,
           };
         }),
@@ -490,6 +555,20 @@ export class RepositoryLineBasedChunker {
       filesProcessed: results.length,
       totalSourceBytes,
       totalSourceCharacters,
+    };
+  }
+
+  protected chunkSource(
+    content: string,
+    metadata: LineChunkSourceMetadata,
+    options: LineBasedChunkerOptions | undefined,
+  ): SourceFileChunkingResult {
+    return {
+      chunks: this.lineChunker.chunk(content, metadata, options),
+      chunkingStrategy: "line",
+      imports: [],
+      exports: [],
+      symbols: [],
     };
   }
 

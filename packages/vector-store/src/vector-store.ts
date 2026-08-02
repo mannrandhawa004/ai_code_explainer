@@ -30,6 +30,7 @@ export type QdrantClientContract = Pick<
   | "getCollection"
   | "query"
   | "retrieve"
+  | "scroll"
   | "upsert"
   | "versionInfo"
 >;
@@ -44,6 +45,9 @@ export const qdrantPayloadIndexes = [
   "symbolName",
   "symbolType",
   "contentHash",
+  "imports",
+  "exports",
+  "references",
 ] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {

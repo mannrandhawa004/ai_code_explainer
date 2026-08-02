@@ -75,6 +75,9 @@ export function formatCodeChunkForEmbedding(
     "",
     "Exports:",
     ...formatList(chunk.exports, "export"),
+    ...(chunk.references === undefined
+      ? []
+      : ["", "References:", ...formatList(chunk.references, "reference")]),
     "",
     "Code:",
     chunk.content,

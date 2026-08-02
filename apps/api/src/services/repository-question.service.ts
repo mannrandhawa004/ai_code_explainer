@@ -7,6 +7,7 @@ import {
   classifyRepositoryQuestion,
   createOpenAIQuestionEmbeddingServiceFromEnv,
   createOpenAIRepositoryAnswerGeneratorFromEnv,
+  extractExactSymbolName,
   type AnswerTokenUsage,
   type QuestionEmbedding,
   type RepositoryAnswerCitation,
@@ -127,6 +128,15 @@ export interface RepositoryQuestionRetriever {
     scoreThreshold?: number;
     signal?: AbortSignal;
   }): Promise<CodeChunkSearchResult[]>;
+  searchExactSymbol(input: {
+    symbolName: string;
+    userId: string;
+    repositoryId: string;
+    branch: string;
+    commitSha: string;
+    limit?: number;
+    signal?: AbortSignal;
+  }): Promise<CodeChunkSearchResult[]>;
 }
 
 export interface RepositoryQuestionAnswerer {
@@ -205,6 +215,24 @@ function toAnswerSource(result: CodeChunkSearchResult): RepositoryAnswerSource {
     endLine: result.endLine,
     content: result.content,
   };
+}
+
+function mergeRetrievedChunks(
+  exactMatches: readonly CodeChunkSearchResult[],
+  semanticMatches: readonly CodeChunkSearchResult[],
+  limit: number | undefined,
+): CodeChunkSearchResult[] {
+  const merged = new Map<string, CodeChunkSearchResult>();
+  for (const chunk of exactMatches) {
+    merged.set(chunk.id, { ...chunk, score: 1 });
+  }
+  for (const chunk of semanticMatches) {
+    if (!merged.has(chunk.id)) {
+      merged.set(chunk.id, chunk);
+    }
+  }
+  const results = [...merged.values()];
+  return limit === undefined ? results : results.slice(0, limit);
 }
 
 const emptyAnswerUsage: AnswerTokenUsage = {
@@ -303,8 +331,7 @@ export class RepositoryQuestionService
 
     let chunks: CodeChunkSearchResult[];
     try {
-      chunks = await this.dependencies.retriever.search({
-        vector: embedding.vector,
+      const repositoryScope = {
         userId: repository.userId,
         repositoryId: repository.id,
         branch: repository.selectedBranch,
@@ -312,11 +339,35 @@ export class RepositoryQuestionService
         ...(this.dependencies.searchLimit === undefined
           ? {}
           : { limit: this.dependencies.searchLimit }),
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
+      };
+      const semanticSearch = this.dependencies.retriever.search({
+        vector: embedding.vector,
+        ...repositoryScope,
         ...(this.dependencies.scoreThreshold === undefined
           ? {}
           : { scoreThreshold: this.dependencies.scoreThreshold }),
-        ...(input.signal === undefined ? {} : { signal: input.signal }),
       });
+      const exactSymbolName =
+        category === "exact_symbol"
+          ? extractExactSymbolName(question)
+          : undefined;
+      if (exactSymbolName === undefined) {
+        chunks = await semanticSearch;
+      } else {
+        const [semanticMatches, exactMatches] = await Promise.all([
+          semanticSearch,
+          this.dependencies.retriever.searchExactSymbol({
+            symbolName: exactSymbolName,
+            ...repositoryScope,
+          }),
+        ]);
+        chunks = mergeRetrievedChunks(
+          exactMatches,
+          semanticMatches,
+          this.dependencies.searchLimit,
+        );
+      }
     } catch (error) {
       assertNotAborted(input.signal);
       throw new RepositoryQuestionError(

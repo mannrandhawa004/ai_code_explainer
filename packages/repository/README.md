@@ -2,7 +2,7 @@
 
 Safe, reusable repository ingestion primitives shared by the API and indexing worker.
 
-Step 6 introduces public GitHub repository cloning. Step 7 adds bounded, deterministic file discovery without following symbolic links. Step 8 adds secure source-file filtering. Step 9 adds deterministic line-based source chunking. Later steps add AST parsing and richer symbol-aware chunks.
+Step 6 introduces public GitHub repository cloning. Step 7 adds bounded, deterministic file discovery without following symbolic links. Step 8 adds secure source-file filtering. Step 9 adds deterministic line-based source chunking. Step 16 adds Tree-sitter AST parsing and symbol-aware chunks.
 
 The cloner accepts only canonical public `https://github.com/owner/repository` URLs. It disables inherited Git configuration and credential prompts, rejects unsafe branch names and protocols, creates a depth-one single-branch clone, and removes the temporary source tree whether processing succeeds or fails.
 
@@ -49,3 +49,9 @@ Run the real clone-filter-chunk integration test with:
 $env:RUN_GITHUB_CHUNK_TESTS="true"
 npm run test --workspace @codebase-explainer/repository
 ```
+
+## Tree-sitter chunking
+
+`TreeSitterCodeChunker` parses JavaScript, JSX, TypeScript, and TSX without executing repository code. It extracts imports, exports, references, functions, arrow functions, classes, methods, interfaces, type aliases, enums, React components, Express routes, controllers, services, and models with one-based source ranges.
+
+`RepositoryTreeSitterChunker` is the worker-facing implementation. It preserves all repository byte, character, concurrency, cancellation, and chunk limits from line chunking. Unsupported languages use line chunks, and JavaScript/TypeScript files with parser errors or excessive AST size fall back to line chunks instead of failing the complete indexing job.

@@ -23,6 +23,8 @@ function createEmbeddedChunk(): EmbeddedCodeChunk {
       commitSha: "integration-commit",
       filePath: "src/integration.ts",
       language: "typescript",
+      symbolType: "variable",
+      symbolName: "original",
       startLine: 1,
       endLine: 1,
       chunkIndex: 0,
@@ -37,6 +39,19 @@ function createEmbeddedChunk(): EmbeddedCodeChunk {
     embeddingTokenCount: 5,
     embeddingInputHash: "d".repeat(64),
   };
+}
+
+function expectCosineStoredVector(
+  actual: unknown,
+  input: readonly number[],
+): void {
+  expect(Array.isArray(actual)).toBe(true);
+  const magnitude = Math.sqrt(
+    input.reduce((total, value) => total + value * value, 0),
+  );
+  for (const [index, value] of input.entries()) {
+    expect((actual as number[])[index]).toBeCloseTo(value / magnitude, 6);
+  }
 }
 
 describeWithQdrant("Qdrant code-chunk storage", () => {
@@ -73,14 +88,26 @@ describeWithQdrant("Qdrant code-chunk storage", () => {
       endLine: 1,
       content: "export const original = true;",
     });
-    expect(inserted[0]?.vector).toEqual([0.1, 0.2, 0.3, 0.4]);
+    expectCosineStoredVector(inserted[0]?.vector, [0.1, 0.2, 0.3, 0.4]);
 
     const replacement = createEmbeddedChunk();
     replacement.chunk.content = "export const replacement = true;";
     replacement.chunk.contentHash = "e".repeat(64);
     replacement.embedding = [0.4, 0.3, 0.2, 0.1];
     replacement.chunk.exports = ["replacement"];
+    replacement.chunk.symbolName = "replacement";
     await store.upsert([replacement]);
+
+    const occurrence = createEmbeddedChunk();
+    occurrence.chunk.id = "33333333-3333-8333-8333-333333333333";
+    occurrence.chunk.filePath = "src/use-replacement.ts";
+    occurrence.chunk.symbolName = "useReplacement";
+    occurrence.chunk.content = "export function useReplacement() { return replacement; }";
+    occurrence.chunk.contentHash = "f".repeat(64);
+    occurrence.chunk.exports = ["useReplacement"];
+    occurrence.chunk.references = ["replacement"];
+    occurrence.embeddingInputHash = "1".repeat(64);
+    await store.upsert([occurrence]);
 
     const replaced = await client!.retrieve(collectionName, {
       ids: [replacement.chunk.id],
@@ -91,7 +118,7 @@ describeWithQdrant("Qdrant code-chunk storage", () => {
     expect(replaced[0]?.payload?.content).toBe(
       "export const replacement = true;",
     );
-    expect(replaced[0]?.vector).toEqual([0.4, 0.3, 0.2, 0.1]);
+    expectCosineStoredVector(replaced[0]?.vector, [0.4, 0.3, 0.2, 0.1]);
 
     const search = new QdrantCodeChunkSearch(store.vectorStore.config);
     const searchResults = await search.search({
@@ -107,6 +134,26 @@ describeWithQdrant("Qdrant code-chunk storage", () => {
       filePath: "src/integration.ts",
       content: "export const replacement = true;",
     });
+    const exactResults = await search.searchExactSymbol({
+      symbolName: "replacement",
+      userId: "integration-user",
+      repositoryId: "integration-repository",
+      branch: "main",
+      commitSha: "integration-commit",
+      limit: 5,
+    });
+    expect(exactResults).toEqual([
+      expect.objectContaining({
+        id: replacement.chunk.id,
+        symbolName: "replacement",
+        score: 1,
+      }),
+      expect.objectContaining({
+        id: occurrence.chunk.id,
+        symbolName: "useReplacement",
+        score: 0.95,
+      }),
+    ]);
 
     await store.deleteRepositoryChunks({
       userId: "integration-user",
@@ -117,7 +164,7 @@ describeWithQdrant("Qdrant code-chunk storage", () => {
 
     await expect(
       client!.retrieve(collectionName, {
-        ids: [replacement.chunk.id],
+        ids: [replacement.chunk.id, occurrence.chunk.id],
         with_payload: true,
       }),
     ).resolves.toEqual([]);

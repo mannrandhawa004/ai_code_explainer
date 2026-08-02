@@ -48,6 +48,7 @@ export {
   defaultSourceReadConcurrency,
   detectRepositorySourceLanguage,
   type ChunkedRepositoryFileSummary,
+  type ChunkedRepositorySymbol,
   type CodeChunk,
   type LineBasedChunkerOptions,
   type LineChunkSourceMetadata,
@@ -56,4 +57,11 @@ export {
   type RepositoryChunkingResult,
   type RepositoryLineChunkerOptions,
   type RepositorySourceLanguage,
+  type SourceFileChunkingResult,
 } from "./line-based-chunker.js";
+export { RepositoryTreeSitterChunker } from "./repository-tree-sitter-chunker.js";
+export {
+  TreeSitterCodeChunker,
+  defaultMaximumTreeSitterNodes,
+  type TreeSitterChunkerOptions,
+} from "./tree-sitter-chunker.js";

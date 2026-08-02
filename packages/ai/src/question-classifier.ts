@@ -18,12 +18,23 @@ const filePathPattern =
 const exactSymbolIntentPattern =
   /(?:where\s+is|find|used?|defined?|references?|calls?)\s+[`'"]*([A-Za-z_$][\w$]*(?:\(\))?)/iu;
 
-function namesCodeLikeSymbol(question: string): boolean {
-  if (/`[A-Za-z_$][\w$]*`/u.test(question)) {
-    return true;
+export function extractExactSymbolName(question: string): string | undefined {
+  const quoted = /`([A-Za-z_$][\w$]*)`/u.exec(question)?.[1];
+  if (quoted !== undefined) {
+    return quoted;
   }
   const candidate = exactSymbolIntentPattern.exec(question)?.[1];
-  return candidate !== undefined && /[A-Z_$]|[a-z][A-Z]|\(\)$/u.test(candidate);
+  if (
+    candidate === undefined ||
+    !/[A-Z_$]|[a-z][A-Z]|\(\)$/u.test(candidate)
+  ) {
+    return undefined;
+  }
+  return candidate.replace(/\(\)$/u, "");
+}
+
+function namesCodeLikeSymbol(question: string): boolean {
+  return extractExactSymbolName(question) !== undefined;
 }
 
 export function classifyRepositoryQuestion(
