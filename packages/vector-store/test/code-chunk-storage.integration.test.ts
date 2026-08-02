@@ -155,11 +155,53 @@ describeWithQdrant("Qdrant code-chunk storage", () => {
       }),
     ]);
 
+    await store.promoteRepositoryCommit({
+      userId: "integration-user",
+      repositoryId: "integration-repository",
+      branch: "main",
+      toCommitSha: "2".repeat(40),
+    });
+    await expect(
+      search.search({
+        vector: [0.4, 0.3, 0.2, 0.1],
+        userId: "integration-user",
+        repositoryId: "integration-repository",
+        branch: "main",
+        commitSha: "integration-commit",
+        limit: 5,
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      search.search({
+        vector: [0.4, 0.3, 0.2, 0.1],
+        userId: "integration-user",
+        repositoryId: "integration-repository",
+        branch: "main",
+        commitSha: "2".repeat(40),
+        limit: 5,
+      }),
+    ).resolves.toHaveLength(2);
+
+    await store.deleteFileChunks({
+      userId: "integration-user",
+      repositoryId: "integration-repository",
+      branch: "main",
+      filePaths: ["src/integration.ts"],
+    });
+    await expect(
+      client!.retrieve(collectionName, {
+        ids: [replacement.chunk.id, occurrence.chunk.id],
+        with_payload: true,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: occurrence.chunk.id }),
+    ]);
+
     await store.deleteRepositoryChunks({
       userId: "integration-user",
       repositoryId: "integration-repository",
       branch: "main",
-      commitSha: "integration-commit",
+      commitSha: "2".repeat(40),
     });
 
     await expect(

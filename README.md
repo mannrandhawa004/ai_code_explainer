@@ -46,12 +46,12 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 16. Add Tree-sitter
 - [x] 17. Add GitHub App
 - [x] 18. Add webhooks
-- [ ] 19. Add incremental indexing
+- [x] 19. Add incremental indexing
 - [ ] 20. Add evaluations
 
 ## Current state
 
-Step 18 adds a signature-verified GitHub webhook inbox and a dedicated BullMQ webhook worker. The API verifies the exact raw body, validates and minimizes supported payloads, and uses `X-GitHub-Delivery` as the durable replay-protection job ID before responding. Branch pushes revalidate installation access and trigger full reindexing for matching imported branches. Installation suspension/deletion and repository-removal events durably revoke local access and cancel active jobs. Step 19 will replace full reindexing with changed-file updates. See [GitHub App and webhook setup](docs/github-app-setup.md).
+Step 19 adds hash-reconciled incremental indexing. Pushes coalesce on a persisted pending commit while an indexing job is active. The worker clones the current selected branch, hashes every safely accepted UTF-8 source, and compares it with MongoDB instead of trusting truncated webhook or compare file lists. Only added and content-modified files are parsed and embedded; removed or renamed paths are deleted from MongoDB and Qdrant, while unchanged vectors are promoted to the new commit without OpenAI calls. Legacy metadata safely triggers one complete rebuild. See [GitHub App and webhook setup](docs/github-app-setup.md).
 
 ## Prerequisites
 

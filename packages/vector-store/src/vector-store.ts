@@ -31,6 +31,7 @@ export type QdrantClientContract = Pick<
   | "query"
   | "retrieve"
   | "scroll"
+  | "setPayload"
   | "upsert"
   | "versionInfo"
 >;

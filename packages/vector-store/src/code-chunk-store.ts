@@ -11,8 +11,10 @@ export const codeChunkPayloadSchemaVersion = 1;
 export const defaultCodeChunkUpsertBatchSize = 100;
 export const defaultCodeChunkWriteConcurrency = 2;
 export const maximumCodeChunkUpsertBatchSize = 1_000;
+export const maximumCodeChunkDeletePaths = 5_000;
 
 const sha256Pattern = /^[0-9a-f]{64}$/u;
+const gitObjectIdPattern = /^[0-9a-f]{40,64}$/u;
 const canonicalUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
@@ -81,6 +83,28 @@ export type CodeChunkDeleteResult = {
   operationId?: number | string;
 };
 
+export type CodeChunkFileDeleteSelector = {
+  userId: string;
+  repositoryId: string;
+  branch: string;
+  filePaths: readonly string[];
+};
+
+export type CodeChunkBatchDeleteResult = {
+  collectionName: string;
+  pathsDeleted: number;
+  batches: number;
+  operationIds: Array<number | string>;
+  status: "acknowledged" | "completed";
+};
+
+export type CodeChunkCommitPromotion = {
+  userId: string;
+  repositoryId: string;
+  branch: string;
+  toCommitSha: string;
+};
+
 export type CodeChunkStoreErrorCode =
   | "INVALID_CONFIGURATION"
   | "INVALID_CHUNK"
@@ -92,6 +116,8 @@ export type CodeChunkStoreErrorCode =
   | "WRITE_INCOMPLETE"
   | "DELETE_FAILED"
   | "DELETE_INCOMPLETE"
+  | "UPDATE_FAILED"
+  | "UPDATE_INCOMPLETE"
   | "VECTOR_STORE_ABORTED";
 
 export class CodeChunkStoreError extends Error {
@@ -137,6 +163,15 @@ function assertHash(value: string, fieldName: string): void {
     throw new CodeChunkStoreError(
       "INVALID_CHUNK",
       `${fieldName} must be a lowercase SHA-256 hash`,
+    );
+  }
+}
+
+function assertGitObjectId(value: string, fieldName: string): void {
+  if (!gitObjectIdPattern.test(value)) {
+    throw new CodeChunkStoreError(
+      "INVALID_SELECTOR",
+      `${fieldName} must be a lowercase Git object identifier`,
     );
   }
 }
@@ -332,11 +367,43 @@ function createRepositoryFilter(selector: CodeChunkDeleteSelector): {
   };
 }
 
-function batchPoints(
-  points: readonly CodeChunkVectorPoint[],
+function uniqueSafeFilePaths(filePaths: readonly string[]): string[] {
+  const unique = [...new Set(filePaths)];
+  if (unique.length > maximumCodeChunkDeletePaths) {
+    throw new CodeChunkStoreError(
+      "INVALID_SELECTOR",
+      `filePaths cannot contain more than ${maximumCodeChunkDeletePaths} paths`,
+    );
+  }
+  for (const filePath of unique) {
+    assertSafeString(filePath, "filePath", "INVALID_SELECTOR");
+  }
+  return unique;
+}
+
+function createFileFilter(
+  selector: Omit<CodeChunkFileDeleteSelector, "filePaths">,
+  filePaths: readonly string[],
+): {
+  must: Array<
+    | { key: string; match: { value: string } }
+    | { key: string; match: { any: string[] } }
+  >;
+} {
+  const repositoryFilter = createRepositoryFilter(selector);
+  return {
+    must: [
+      ...repositoryFilter.must,
+      { key: "filePath", match: { any: [...filePaths] } },
+    ],
+  };
+}
+
+function batchPoints<Item>(
+  points: readonly Item[],
   batchSize: number,
-): CodeChunkVectorPoint[][] {
-  const batches: CodeChunkVectorPoint[][] = [];
+): Item[][] {
+  const batches: Item[][] = [];
   for (let index = 0; index < points.length; index += batchSize) {
     batches.push(points.slice(index, index + batchSize));
   }
@@ -480,6 +547,119 @@ export class QdrantCodeChunkStore {
       throw new CodeChunkStoreError(
         "DELETE_FAILED",
         "Qdrant failed to delete repository code chunks",
+        { cause: error },
+      );
+    }
+  }
+
+  async deleteFileChunks(
+    selector: CodeChunkFileDeleteSelector,
+    options: CodeChunkDeleteOptions = {},
+  ): Promise<CodeChunkBatchDeleteResult> {
+    const wait = options.wait ?? true;
+    const filePaths = uniqueSafeFilePaths(selector.filePaths);
+    assertNotAborted(options.signal);
+    if (filePaths.length === 0) {
+      return {
+        collectionName: this.vectorStore.config.collectionName,
+        pathsDeleted: 0,
+        batches: 0,
+        operationIds: [],
+        status: "completed",
+      };
+    }
+
+    const batches = batchPoints(filePaths, 256);
+    try {
+      const results: QdrantOperationResult[] = [];
+      for (const batch of batches) {
+        assertNotAborted(options.signal);
+        const rawResult = await this.vectorStore.client.delete(
+          this.vectorStore.config.collectionName,
+          {
+            wait,
+            ordering: "medium",
+            filter: createFileFilter(selector, batch),
+          },
+        );
+        const result = readOperationResult(rawResult);
+        requireCompletedOperation(result, wait, "DELETE_INCOMPLETE");
+        results.push(result);
+      }
+      return {
+        collectionName: this.vectorStore.config.collectionName,
+        pathsDeleted: filePaths.length,
+        batches: batches.length,
+        operationIds: results.flatMap((result) =>
+          result.operation_id === undefined || result.operation_id === null
+            ? []
+            : [result.operation_id],
+        ),
+        status: results.every((result) => result.status === "completed")
+          ? "completed"
+          : "acknowledged",
+      };
+    } catch (error) {
+      if (error instanceof CodeChunkStoreError) {
+        if (error.code === "WRITE_INCOMPLETE") {
+          throw new CodeChunkStoreError("DELETE_INCOMPLETE", error.message, {
+            cause: error,
+          });
+        }
+        throw error;
+      }
+      throw new CodeChunkStoreError(
+        "DELETE_FAILED",
+        "Qdrant failed to delete file-scoped code chunks",
+        { cause: error },
+      );
+    }
+  }
+
+  async promoteRepositoryCommit(
+    input: CodeChunkCommitPromotion,
+    options: CodeChunkDeleteOptions = {},
+  ): Promise<CodeChunkDeleteResult> {
+    const wait = options.wait ?? true;
+    const filter = createRepositoryFilter({
+      userId: input.userId,
+      repositoryId: input.repositoryId,
+      branch: input.branch,
+    });
+    assertGitObjectId(input.toCommitSha, "toCommitSha");
+    assertNotAborted(options.signal);
+
+    try {
+      const rawResult = await this.vectorStore.client.setPayload(
+        this.vectorStore.config.collectionName,
+        {
+          payload: { commitSha: input.toCommitSha },
+          filter,
+          wait,
+          ordering: "medium",
+        },
+      );
+      const result = readOperationResult(rawResult);
+      requireCompletedOperation(result, wait, "WRITE_INCOMPLETE");
+      return {
+        collectionName: this.vectorStore.config.collectionName,
+        status: result.status === "completed" ? "completed" : "acknowledged",
+        ...(result.operation_id === undefined || result.operation_id === null
+          ? {}
+          : { operationId: result.operation_id }),
+      };
+    } catch (error) {
+      if (error instanceof CodeChunkStoreError) {
+        if (error.code === "WRITE_INCOMPLETE") {
+          throw new CodeChunkStoreError("UPDATE_INCOMPLETE", error.message, {
+            cause: error,
+          });
+        }
+        throw error;
+      }
+      throw new CodeChunkStoreError(
+        "UPDATE_FAILED",
+        "Qdrant failed to promote code chunks to the new commit",
         { cause: error },
       );
     }

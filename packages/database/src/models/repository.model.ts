@@ -20,6 +20,7 @@ export const repositoryStatuses = [
 ] as const;
 
 export type RepositoryStatus = (typeof repositoryStatuses)[number];
+const gitObjectIdPattern = /^[0-9a-f]{40,64}$/u;
 
 export interface Repository {
   userId: Types.ObjectId;
@@ -34,6 +35,7 @@ export interface Repository {
   defaultBranch: string;
   status: RepositoryStatus;
   lastIndexedCommit?: string;
+  pendingIndexCommit?: string;
   indexedAt?: Date;
   errorMessage?: string;
   stats: {
@@ -72,7 +74,8 @@ const repositorySchema = new Schema<Repository>(
       required: true,
       default: "pending",
     },
-    lastIndexedCommit: { type: String, trim: true },
+    lastIndexedCommit: { type: String, trim: true, match: gitObjectIdPattern },
+    pendingIndexCommit: { type: String, trim: true, match: gitObjectIdPattern },
     indexedAt: { type: Date },
     errorMessage: { type: String },
     stats: { type: statsSchema, default: () => ({}) },

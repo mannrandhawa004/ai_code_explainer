@@ -83,6 +83,7 @@ describeWithMongo("Mongo indexing persistence integration", () => {
           language: "typescript",
           contentHash: "a".repeat(64),
           sourceBytes: 26,
+          chunkCount: 2,
           imports: ["./dependency.js"],
           exports: ["ready"],
           symbols: [
@@ -97,7 +98,10 @@ describeWithMongo("Mongo indexing persistence integration", () => {
           ],
         },
       ],
-      chunks: 2,
+      retainedFilePaths: [],
+      removedFilePaths: [],
+      totalFiles: 1,
+      totalChunks: 2,
       languages: new Map([["typescript", 1]]),
     });
 
@@ -122,6 +126,7 @@ describeWithMongo("Mongo indexing persistence integration", () => {
       path: "src/index.ts",
       language: "typescript",
       size: 26,
+      chunkCount: 2,
       imports: ["./dependency.js"],
       exports: ["ready"],
       symbols: ["ready"],
@@ -132,5 +137,84 @@ describeWithMongo("Mongo indexing persistence integration", () => {
       startLine: 1,
       endLine: 1,
     });
+
+    await RepositoryFileModel.create({
+      repositoryId,
+      branch: "main",
+      commitSha: "0123456789abcdef0123456789abcdef01234567",
+      path: "src/removed.ts",
+      language: "typescript",
+      hash: "b".repeat(64),
+      size: 12,
+      chunkCount: 1,
+    });
+    await RepositoryModel.updateOne(
+      { _id: repositoryId },
+      {
+        $set: {
+          status: "queued",
+          pendingIndexCommit: "d".repeat(40),
+        },
+      },
+    ).exec();
+    await persistence.begin({
+      ...ids,
+      progress: 5,
+      currentStep: "cloning",
+      repositoryStatus: "cloning",
+    });
+    await expect(
+      persistence.complete({
+        ...ids,
+        branch: "main",
+        commitSha: "c".repeat(40),
+        files: [],
+        retainedFilePaths: ["src/index.ts"],
+        removedFilePaths: ["src/removed.ts"],
+        expectedPendingCommit: "b".repeat(40),
+        totalFiles: 1,
+        totalChunks: 2,
+        languages: new Map([["typescript", 1]]),
+      }),
+    ).resolves.toEqual({
+      superseded: true,
+      pendingCommitSha: "d".repeat(40),
+    });
+    await expect(
+      RepositoryFileModel.findOne({
+        repositoryId,
+        path: "src/removed.ts",
+      }).lean().exec(),
+    ).resolves.toBeNull();
+    await expect(
+      RepositoryModel.findById(repositoryId).lean().exec(),
+    ).resolves.toMatchObject({
+      status: "cloning",
+      lastIndexedCommit: "c".repeat(40),
+      pendingIndexCommit: "d".repeat(40),
+    });
+
+    await expect(
+      persistence.complete({
+        ...ids,
+        branch: "main",
+        commitSha: "c".repeat(40),
+        files: [],
+        retainedFilePaths: ["src/index.ts"],
+        removedFilePaths: [],
+        expectedPendingCommit: "d".repeat(40),
+        totalFiles: 1,
+        totalChunks: 2,
+        languages: new Map([["typescript", 1]]),
+      }),
+    ).resolves.toEqual({ superseded: false });
+    const finalizedRepository = await RepositoryModel.findById(repositoryId)
+      .lean()
+      .exec();
+    expect(finalizedRepository).toMatchObject({
+      status: "ready",
+      lastIndexedCommit: "c".repeat(40),
+    });
+    expect(finalizedRepository).not.toHaveProperty("pendingIndexCommit");
   });
 });

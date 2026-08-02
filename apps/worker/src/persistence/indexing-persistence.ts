@@ -17,6 +17,15 @@ export type IndexableRepository = {
   githubAccessRevokedAt?: Date;
   selectedBranch: string;
   lastIndexedCommit?: string;
+  pendingIndexCommit?: string;
+};
+
+export type PersistedRepositoryFile = {
+  filePath: string;
+  language: string;
+  contentHash: string;
+  sourceBytes: number;
+  chunkCount?: number;
 };
 
 export type PersistedFileSummary = {
@@ -24,6 +33,7 @@ export type PersistedFileSummary = {
   language: string;
   contentHash: string;
   sourceBytes: number;
+  chunkCount: number;
   imports: readonly string[];
   exports: readonly string[];
   symbols: readonly PersistedSymbolSummary[];
@@ -54,8 +64,17 @@ export type IndexingCompletionPersistence = {
   branch: string;
   commitSha: string;
   files: readonly PersistedFileSummary[];
-  chunks: number;
+  retainedFilePaths: readonly string[];
+  removedFilePaths: readonly string[];
+  expectedPendingCommit?: string;
+  totalFiles: number;
+  totalChunks: number;
   languages: ReadonlyMap<string, number>;
+};
+
+export type IndexingCompletionResult = {
+  superseded: boolean;
+  pendingCommitSha?: string;
 };
 
 export type IndexingFailurePersistence = {
@@ -68,10 +87,16 @@ export type IndexingFailurePersistence = {
 
 export interface IndexingPersistence {
   findRepository(repositoryId: string): Promise<IndexableRepository | null>;
+  findRepositoryFiles(
+    repositoryId: string,
+    branch: string,
+  ): Promise<PersistedRepositoryFile[]>;
   isCancellationRequested(bullJobId: string): Promise<boolean>;
   begin(input: IndexingProgressPersistence): Promise<void>;
   updateProgress(input: IndexingProgressPersistence): Promise<void>;
-  complete(input: IndexingCompletionPersistence): Promise<void>;
+  complete(
+    input: IndexingCompletionPersistence,
+  ): Promise<IndexingCompletionResult>;
   fail(input: IndexingFailurePersistence): Promise<void>;
   cancel(input: Omit<IndexingFailurePersistence, "willRetry">): Promise<void>;
 }
@@ -138,7 +163,7 @@ export class MongoIndexingPersistence implements IndexingPersistence {
       .select(
         "userId fullName private githubRepositoryId installationId " +
           "githubAccessRevokedAt " +
-          "selectedBranch lastIndexedCommit",
+          "selectedBranch lastIndexedCommit pendingIndexCommit",
       )
       .lean()
       .exec();
@@ -165,7 +190,32 @@ export class MongoIndexingPersistence implements IndexingPersistence {
       ...(repository.lastIndexedCommit === undefined
         ? {}
         : { lastIndexedCommit: repository.lastIndexedCommit }),
+      ...(repository.pendingIndexCommit === undefined
+        ? {}
+        : { pendingIndexCommit: repository.pendingIndexCommit }),
     };
+  }
+
+  async findRepositoryFiles(
+    repositoryId: string,
+    branch: string,
+  ): Promise<PersistedRepositoryFile[]> {
+    const files = await RepositoryFileModel.find({
+      repositoryId: objectId(repositoryId),
+      branch,
+    })
+      .select("path language hash size chunkCount")
+      .lean()
+      .exec();
+    return files.map((file) => ({
+      filePath: file.path,
+      language: file.language,
+      contentHash: file.hash,
+      sourceBytes: file.size,
+      ...(file.chunkCount === undefined
+        ? {}
+        : { chunkCount: file.chunkCount }),
+    }));
   }
 
   async isCancellationRequested(bullJobId: string): Promise<boolean> {
@@ -229,8 +279,33 @@ export class MongoIndexingPersistence implements IndexingPersistence {
     ]);
   }
 
-  async complete(input: IndexingCompletionPersistence): Promise<void> {
+  async complete(
+    input: IndexingCompletionPersistence,
+  ): Promise<IndexingCompletionResult> {
     const repositoryId = objectId(input.repositoryId);
+    if (input.removedFilePaths.length > 0) {
+      const removedFiles = await RepositoryFileModel.find({
+        repositoryId,
+        branch: input.branch,
+        path: trusted({ $in: [...input.removedFilePaths] }),
+      })
+        .select("_id")
+        .lean()
+        .exec();
+      const removedFileIds = removedFiles.map((file) => file._id);
+      if (removedFileIds.length > 0) {
+        await SymbolModel.deleteMany({
+          repositoryId,
+          fileId: trusted({ $in: removedFileIds }),
+        }).exec();
+      }
+      await RepositoryFileModel.deleteMany({
+        repositoryId,
+        branch: input.branch,
+        path: trusted({ $in: [...input.removedFilePaths] }),
+      }).exec();
+    }
+
     if (input.files.length > 0) {
       await RepositoryFileModel.bulkWrite(
         input.files.map((file) => ({
@@ -246,6 +321,7 @@ export class MongoIndexingPersistence implements IndexingPersistence {
                 language: file.language,
                 hash: file.contentHash,
                 size: file.sourceBytes,
+                chunkCount: file.chunkCount,
                 imports: [...file.imports],
                 exports: [...file.exports],
                 symbols: [
@@ -301,19 +377,66 @@ export class MongoIndexingPersistence implements IndexingPersistence {
       }
     }
 
+    if (input.retainedFilePaths.length > 0) {
+      await RepositoryFileModel.updateMany(
+        {
+          repositoryId,
+          branch: input.branch,
+          path: trusted({ $in: [...input.retainedFilePaths] }),
+        },
+        { $set: { commitSha: input.commitSha } },
+        { runValidators: true },
+      ).exec();
+    }
+
     await requireRepositoryUpdate(input.repositoryId, input.userId, {
       $set: {
-        status: "ready",
         selectedBranch: input.branch,
         defaultBranch: input.branch,
         lastIndexedCommit: input.commitSha,
-        indexedAt: new Date(),
-        "stats.files": input.files.length,
-        "stats.chunks": input.chunks,
+        "stats.files": input.totalFiles,
+        "stats.chunks": input.totalChunks,
         "stats.languages": Object.fromEntries(input.languages),
       },
       $unset: { errorMessage: 1 },
     });
+
+    const finalized = await RepositoryModel.updateOne(
+      {
+        ...repositoryFilter(input.repositoryId, input.userId),
+        pendingIndexCommit:
+          input.expectedPendingCommit === undefined
+            ? trusted({ $exists: false })
+            : input.expectedPendingCommit,
+      },
+      {
+        $set: { status: "ready", indexedAt: new Date() },
+        $unset: { pendingIndexCommit: 1, errorMessage: 1 },
+      },
+      { runValidators: true },
+    ).exec();
+
+    if (finalized.matchedCount !== 1) {
+      const repository = await RepositoryModel.findOne({
+        _id: repositoryId,
+        userId: objectId(input.userId),
+      })
+        .select("githubAccessRevokedAt pendingIndexCommit")
+        .lean()
+        .exec();
+      if (repository?.githubAccessRevokedAt !== undefined) {
+        throw new RepositoryAccessRevokedError();
+      }
+      if (!repository) {
+        throw new Error("Repository was not found for the indexing owner");
+      }
+      return {
+        superseded: true,
+        ...(repository.pendingIndexCommit === undefined
+          ? {}
+          : { pendingCommitSha: repository.pendingIndexCommit }),
+      };
+    }
 
     await IndexingJobModel.updateOne(
       {
@@ -335,6 +458,7 @@ export class MongoIndexingPersistence implements IndexingPersistence {
         throw new IndexingCancellationRequestedError();
       }
     });
+    return { superseded: false };
   }
 
   async fail(input: IndexingFailurePersistence): Promise<void> {

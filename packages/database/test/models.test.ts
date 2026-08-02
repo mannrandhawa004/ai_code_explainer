@@ -84,6 +84,23 @@ describe("database models", () => {
     expect(repository.githubAccessRevokedAt).toEqual(revokedAt);
   });
 
+  it("validates pending incremental commit identifiers", async () => {
+    const repository = new RepositoryModel({
+      userId: new Types.ObjectId(),
+      owner: "owner",
+      name: "repository",
+      fullName: "owner/repository",
+      private: false,
+      selectedBranch: "main",
+      defaultBranch: "main",
+      pendingIndexCommit: "not-a-commit",
+    });
+
+    await expect(repository.validate()).rejects.toMatchObject({
+      errors: { pendingIndexCommit: expect.anything() },
+    });
+  });
+
   it("rejects repository files with negative sizes", async () => {
     const file = new RepositoryFileModel({
       repositoryId: new Types.ObjectId(),
@@ -124,6 +141,23 @@ describe("database models", () => {
 
     await expect(message.validate()).rejects.toMatchObject({
       errors: { role: expect.anything() },
+    });
+  });
+
+  it("rejects repository files with negative chunk counts", async () => {
+    const file = new RepositoryFileModel({
+      repositoryId: new Types.ObjectId(),
+      branch: "main",
+      commitSha: "a".repeat(40),
+      path: "src/index.ts",
+      language: "typescript",
+      hash: "a".repeat(64),
+      size: 1,
+      chunkCount: -1,
+    });
+
+    await expect(file.validate()).rejects.toMatchObject({
+      errors: { chunkCount: expect.anything() },
     });
   });
 
