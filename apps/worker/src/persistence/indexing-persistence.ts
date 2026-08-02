@@ -12,6 +12,8 @@ export type IndexableRepository = {
   userId: string;
   fullName: string;
   private: boolean;
+  githubRepositoryId?: number;
+  installationId?: number;
   selectedBranch: string;
   lastIndexedCommit?: string;
 };
@@ -113,7 +115,8 @@ export class MongoIndexingPersistence implements IndexingPersistence {
   ): Promise<IndexableRepository | null> {
     const repository = await RepositoryModel.findById(objectId(repositoryId))
       .select(
-        "userId fullName private selectedBranch lastIndexedCommit",
+        "userId fullName private githubRepositoryId installationId " +
+          "selectedBranch lastIndexedCommit",
       )
       .lean()
       .exec();
@@ -127,6 +130,12 @@ export class MongoIndexingPersistence implements IndexingPersistence {
       userId: repository.userId.toString(),
       fullName: repository.fullName,
       private: repository.private,
+      ...(repository.githubRepositoryId === undefined
+        ? {}
+        : { githubRepositoryId: repository.githubRepositoryId }),
+      ...(repository.installationId === undefined
+        ? {}
+        : { installationId: repository.installationId }),
       selectedBranch: repository.selectedBranch,
       ...(repository.lastIndexedCommit === undefined
         ? {}

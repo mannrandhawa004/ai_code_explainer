@@ -167,9 +167,49 @@ describe("PublicRepositoryCloner", () => {
       ),
     ).rejects.toMatchObject({
       code: "CLONE_FAILED",
-      message: "Unable to clone public GitHub repository owner/repository",
+      message: "Unable to clone GitHub repository owner/repository",
     });
     await expect(fs.readdir(tempRoot)).resolves.toEqual([]);
+  });
+
+  it("keeps private repository credentials out of commands and removes them", async () => {
+    const accessToken = "github-installation-token-fixture";
+    let observedConfig = "";
+    const baseRunner = createRunner();
+    const runner: CloneCommandRunner = vi.fn(async (arguments_, options) => {
+      expect(arguments_.join(" ")).not.toContain(accessToken);
+      observedConfig = await fs.readFile(options.gitConfigPath, "utf8");
+      return baseRunner(arguments_, options);
+    });
+    const cloner = new PublicRepositoryCloner({ tempRoot }, runner);
+
+    await cloner.withClone(
+      {
+        repositoryUrl: "https://github.com/owner/private-repository",
+        accessToken,
+      },
+      async () => undefined,
+    );
+
+    expect(observedConfig).toContain("extraHeader = Authorization: Basic");
+    expect(observedConfig).not.toContain(accessToken);
+    await expect(fs.readdir(tempRoot)).resolves.toEqual([]);
+  });
+
+  it("rejects tokens that could inject Git configuration", async () => {
+    const runner = createRunner();
+    const cloner = new PublicRepositoryCloner({ tempRoot }, runner);
+
+    await expect(
+      cloner.withClone(
+        {
+          repositoryUrl: "https://github.com/owner/repository",
+          accessToken: "token\n[credential]",
+        },
+        async () => undefined,
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_ACCESS_TOKEN" });
+    expect(runner).not.toHaveBeenCalled();
   });
 
   it("rejects a cancelled clone before invoking Git", async () => {

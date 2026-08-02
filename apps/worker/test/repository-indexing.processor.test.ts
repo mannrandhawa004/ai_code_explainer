@@ -246,6 +246,53 @@ describe("RepositoryIndexingProcessor", () => {
     expect(dependencies.cloner.withClone).not.toHaveBeenCalled();
   });
 
+  it("mints a repository-scoped token immediately before cloning a private repository", async () => {
+    const persistence = createPersistence();
+    vi.mocked(persistence.findRepository).mockResolvedValue({
+      id: repositoryId,
+      userId,
+      fullName: "owner/repository",
+      private: true,
+      githubRepositoryId: 9001,
+      installationId: 501,
+      selectedBranch: "main",
+    });
+    const dependencies = createDependencies(persistence);
+    dependencies.installationTokenProvider = {
+      createRepositoryToken: vi.fn().mockResolvedValue("installation-token"),
+    };
+
+    await createProcessor(dependencies).process(createJob(), jobData);
+
+    expect(
+      dependencies.installationTokenProvider.createRepositoryToken,
+    ).toHaveBeenCalledWith({ installationId: 501, repositoryId: 9001 });
+    expect(dependencies.cloner.withClone).toHaveBeenCalledWith(
+      expect.objectContaining({ accessToken: "installation-token" }),
+      expect.any(Function),
+    );
+  });
+
+  it("fails closed before Git when private repository metadata is incomplete", async () => {
+    const persistence = createPersistence();
+    vi.mocked(persistence.findRepository).mockResolvedValue({
+      id: repositoryId,
+      userId,
+      fullName: "owner/repository",
+      private: true,
+      selectedBranch: "main",
+    });
+    const dependencies = createDependencies(persistence);
+
+    await expect(
+      createProcessor(dependencies).process(createJob(), jobData),
+    ).rejects.toMatchObject({
+      code: "PRIVATE_REPOSITORY_ACCESS_DENIED",
+      retryable: false,
+    });
+    expect(dependencies.cloner.withClone).not.toHaveBeenCalled();
+  });
+
   it("persists a retryable failure while attempts remain", async () => {
     const dependencies = createDependencies();
     vi.mocked(dependencies.chunkStore.upsert).mockRejectedValue(

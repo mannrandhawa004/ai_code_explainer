@@ -43,15 +43,15 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 13. Add source citations
 - [x] 14. Build Next.js chat interface
 - [x] 15. Add BullMQ worker
-- [ ] 16. Add Tree-sitter
-- [ ] 17. Add GitHub App
+- [x] 16. Add Tree-sitter
+- [x] 17. Add GitHub App
 - [ ] 18. Add webhooks
 - [ ] 19. Add incremental indexing
 - [ ] 20. Add evaluations
 
 ## Current state
 
-Step 15 adds a typed BullMQ/Redis indexing queue and a separate worker that safely clones public repositories, filters and chunks source files, generates embeddings, stores vectors, and persists progress and results in MongoDB. The API now exposes authenticated import, reindex, status, cancellation, and Redis-health endpoints. Jobs use exponential retries, per-repository deduplication, cancellation checks, bounded concurrency, and graceful shutdown.
+Step 17 adds GitHub App user authentication, HttpOnly API sessions, encrypted and refreshable user tokens, authorized installation/repository/branch discovery, and private-repository imports. Private jobs carry no credentials: the worker verifies persisted GitHub metadata, mints a short-lived installation token scoped to one repository with read-only contents permission, injects it through a temporary Git configuration, and removes the credential and clone in all outcomes. See [GitHub App setup](docs/github-app-setup.md).
 
 ## Prerequisites
 

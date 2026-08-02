@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import cookieParser from "cookie-parser";
 import cors, { type CorsOptions } from "cors";
 import express, { type Express } from "express";
 import rateLimit from "express-rate-limit";
@@ -12,8 +13,11 @@ import { logger as defaultLogger } from "./config/logger.js";
 import { AppError } from "./errors/app-error.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { notFound } from "./middleware/not-found.js";
+import { createSessionAuthMiddleware } from "./middleware/session-auth.js";
 import { createApiRouter } from "./routes/index.js";
 import type { AuthenticatedUserIdResolver } from "./routes/question.routes.js";
+import type { GitHubAuthServiceContract } from "./services/github-auth.service.js";
+import type { GitHubRepositoryServiceContract } from "./services/github-repository.service.js";
 import type { RepositoryQuestionServiceContract } from "./services/repository-question.service.js";
 import type { RepositoryImportServiceContract } from "./services/repository-import.service.js";
 
@@ -22,6 +26,8 @@ export type CreateAppOptions = {
   disableRateLimit?: boolean;
   repositoryQuestionService?: RepositoryQuestionServiceContract;
   repositoryImportService?: RepositoryImportServiceContract;
+  githubAuthService?: GitHubAuthServiceContract;
+  githubRepositoryService?: GitHubRepositoryServiceContract;
   resolveAuthenticatedUserId?: AuthenticatedUserIdResolver;
 };
 
@@ -87,10 +93,43 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   app.use(express.json({ limit: env.API_JSON_LIMIT }));
   app.use(express.urlencoded({ extended: false, limit: env.API_JSON_LIMIT }));
+  app.use(cookieParser());
+  app.use(
+    createSessionAuthMiddleware(
+      options.githubAuthService === undefined
+        ? {}
+        : { service: options.githubAuthService },
+    ),
+  );
 
   app.use(
     "/api",
     createApiRouter({
+      auth: {
+        ...(options.githubAuthService === undefined
+          ? {}
+          : { service: options.githubAuthService }),
+        ...(options.resolveAuthenticatedUserId === undefined
+          ? {}
+          : {
+              resolveAuthenticatedUserId:
+                options.resolveAuthenticatedUserId,
+            }),
+      },
+      github: {
+        ...(options.githubRepositoryService === undefined
+          ? {}
+          : { service: options.githubRepositoryService }),
+        ...(options.repositoryImportService === undefined
+          ? {}
+          : { repositoryImportService: options.repositoryImportService }),
+        ...(options.resolveAuthenticatedUserId === undefined
+          ? {}
+          : {
+              resolveAuthenticatedUserId:
+                options.resolveAuthenticatedUserId,
+            }),
+      },
       question: {
         ...(options.repositoryQuestionService === undefined
           ? {}

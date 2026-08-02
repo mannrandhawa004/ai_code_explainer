@@ -8,6 +8,11 @@ const redisUrlSchema = z
     message: "REDIS_URL must use the redis or rediss protocol",
   });
 
+const optionalTrimmedString = z
+  .string()
+  .optional()
+  .transform((value) => value?.trim() || undefined);
+
 const workerEnvSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -55,6 +60,10 @@ const workerEnvSchema = z.object({
     .int()
     .positive()
     .default(30_000),
+  GITHUB_APP_ID: optionalTrimmedString,
+  GITHUB_PRIVATE_KEY: optionalTrimmedString.transform((value) =>
+    value?.replaceAll("\\n", "\n"),
+  ),
 });
 
 export type WorkerEnvironment = z.infer<typeof workerEnvSchema>;
@@ -75,6 +84,21 @@ export function parseWorkerEnvironment(
     !result.data.REDIS_URL.startsWith("rediss://")
   ) {
     throw new Error("REDIS_URL must use TLS (rediss://) in production");
+  }
+
+  const configuredGitHubValues = [
+    result.data.GITHUB_APP_ID,
+    result.data.GITHUB_PRIVATE_KEY,
+  ].filter(Boolean).length;
+  if (configuredGitHubValues === 1) {
+    throw new Error(
+      "Private repository indexing requires GITHUB_APP_ID and GITHUB_PRIVATE_KEY",
+    );
+  }
+  if (result.data.NODE_ENV === "production" && configuredGitHubValues !== 2) {
+    throw new Error(
+      "Private repository indexing must be configured in production",
+    );
   }
 
   return result.data;

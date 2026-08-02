@@ -19,6 +19,14 @@ GET /api/health
 GET /api/health/database
 GET /api/health/qdrant
 GET /api/health/redis
+GET /api/auth/github
+GET /api/auth/github/callback
+POST /api/auth/logout
+GET /api/auth/me
+GET /api/github/installations
+GET /api/github/repositories?installationId=:installationId
+GET /api/github/repositories/:owner/:repository/branches?installationId=:installationId
+POST /api/github/repositories/:owner/:repository/import
 POST /api/repositories/import
 POST /api/repositories/:id/index
 GET /api/repositories/:id/status
@@ -26,7 +34,7 @@ POST /api/repositories/:id/index/cancel
 POST /api/repositories/:id/chat
 ```
 
-Repository imports accept a canonical public GitHub URL and optional branch, persist a tenant-owned repository record, enqueue a deduplicated BullMQ job, and return `202 Accepted` immediately. Active imports return their existing job instead of creating duplicate work. Status responses expose the persisted phase and percentage; cancellation removes queued jobs or records a cancellation request that an active worker observes between phases.
+Public repository imports accept a canonical GitHub URL and optional branch. Private imports use only metadata returned through a user-authorized GitHub App installation. Both persist a tenant-owned repository record, enqueue a deduplicated BullMQ job, and return `202 Accepted` immediately. Active imports return their existing job instead of creating duplicate work. Private reindexing revalidates GitHub access before enqueueing.
 
 ```json
 {
@@ -34,6 +42,17 @@ Repository imports accept a canonical public GitHub URL and optional branch, per
   "branch": "main"
 }
 ```
+
+Private import request:
+
+```json
+{
+  "installationId": 501,
+  "branch": "main"
+}
+```
+
+GitHub access and refresh tokens are encrypted with AES-256-GCM and excluded from normal user queries. The browser receives only a signed HttpOnly session cookie. OAuth callback state is stored in a short-lived HttpOnly cookie and compared in constant time. See the root [GitHub App setup guide](../../docs/github-app-setup.md) for permissions and environment variables.
 
 The chat endpoint validates a server-authenticated user, checks repository ownership and indexing status before provider calls, retrieves only the repository's current tenant/branch/commit vectors, generates a grounded response, and persists the exchange with model, usage, and latency metadata. Authentication is fail-closed until an authentication middleware supplies `response.locals.authenticatedUserId`; request body fields and unverified headers are never accepted as identity.
 
@@ -66,4 +85,4 @@ Successful responses include the cited sources next to the rendered answer:
 
 Only sources validated against the retrieved repository chunks are returned and persisted. The deterministic insufficient-context response has an empty `sources` array.
 
-All repository routes use the same fail-closed server-authenticated identity contract as chat. Client-supplied identity headers and body fields are ignored. The API foundation also includes validated environment configuration, security headers, an explicit CORS allowlist, request IDs, structured logging, rate limiting, JSON body limits, consistent error responses, and graceful shutdown.
+All repository routes use the same fail-closed server-authenticated identity contract as chat. Client-supplied identity headers and body fields are ignored. GitHub installation access is validated server-side for repository discovery, branch discovery, imports, and private reindexing. The API foundation also includes validated environment configuration, security headers, an explicit CORS allowlist, request IDs, credential-redacted structured logging, rate limiting, JSON body limits, consistent error responses, and graceful shutdown.

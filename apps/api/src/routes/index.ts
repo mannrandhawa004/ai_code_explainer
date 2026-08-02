@@ -1,6 +1,14 @@
 import { Router } from "express";
 
+import {
+  createAuthRouter,
+  type CreateAuthRouterOptions,
+} from "./auth.routes.js";
 import { healthRouter } from "./health.routes.js";
+import {
+  createGitHubRouter,
+  type CreateGitHubRouterOptions,
+} from "./github.routes.js";
 import {
   createQuestionRouter,
   type CreateQuestionRouterOptions,
@@ -11,6 +19,8 @@ import {
 } from "./repository.routes.js";
 
 export type CreateApiRouterOptions = {
+  auth?: CreateAuthRouterOptions;
+  github?: CreateGitHubRouterOptions;
   question?: CreateQuestionRouterOptions;
   repository?: CreateRepositoryRouterOptions;
 };
@@ -18,6 +28,8 @@ export type CreateApiRouterOptions = {
 export function createApiRouter(options: CreateApiRouterOptions = {}): Router {
   const router = Router();
   router.use(healthRouter);
+  router.use(createAuthRouter(options.auth));
+  router.use(createGitHubRouter(options.github));
   router.use(createRepositoryRouter(options.repository));
   router.use(createQuestionRouter(options.question));
   return router;
