@@ -44,6 +44,7 @@ function createClient(
     getCollection: vi.fn(),
     query: vi.fn().mockResolvedValue({ points: [] }),
     retrieve: vi.fn().mockResolvedValue([]),
+    scroll: vi.fn().mockResolvedValue({ points: [], next_page_offset: null }),
     upsert: vi.fn().mockResolvedValue({ status: "completed" }),
     versionInfo: vi.fn().mockResolvedValue({
       title: "qdrant",
@@ -119,6 +120,95 @@ describe("QdrantCodeChunkSearch", () => {
       search.search({ ...searchRequest, limit: 51 }),
     ).rejects.toMatchObject({ code: "INVALID_QUERY" });
     expect(client.query).not.toHaveBeenCalled();
+  });
+
+  it("retrieves exact symbol chunks with the full repository scope", async () => {
+    const definition = {
+      id: "11111111-1111-8111-8111-111111111111",
+      version: 1,
+      payload: createPayload(),
+    };
+    const occurrence = {
+      id: "22222222-2222-8222-8222-222222222222",
+      version: 1,
+      payload: createPayload({
+        symbolName: "authorizeRequest",
+        startLine: 30,
+        endLine: 35,
+        chunkIndex: 1,
+        references: ["authenticate"],
+      }),
+    };
+    const scroll = vi
+      .fn()
+      .mockResolvedValueOnce({
+        points: [definition],
+        next_page_offset: null,
+      })
+      .mockResolvedValueOnce({
+        points: [definition, occurrence],
+        next_page_offset: null,
+      });
+    const search = new QdrantCodeChunkSearch(config, createClient({ scroll }));
+
+    await expect(
+      search.searchExactSymbol({
+        symbolName: "authenticate",
+        userId: "user-1",
+        repositoryId: "repo-1",
+        branch: "main",
+        commitSha: "abc123",
+        limit: 5,
+      }),
+    ).resolves.toEqual([
+      {
+        id: "11111111-1111-8111-8111-111111111111",
+        score: 1,
+        ...createPayload(),
+      },
+      {
+        id: "22222222-2222-8222-8222-222222222222",
+        score: 0.95,
+        ...createPayload({
+          symbolName: "authorizeRequest",
+          startLine: 30,
+          endLine: 35,
+          chunkIndex: 1,
+        }),
+      },
+    ]);
+    expect(scroll).toHaveBeenNthCalledWith(1, "code_chunks", {
+      limit: 5,
+      filter: {
+        must: [
+          { key: "userId", match: { value: "user-1" } },
+          { key: "repositoryId", match: { value: "repo-1" } },
+          { key: "branch", match: { value: "main" } },
+          { key: "commitSha", match: { value: "abc123" } },
+          { key: "symbolName", match: { value: "authenticate" } },
+        ],
+      },
+      with_payload: true,
+      with_vector: false,
+    });
+    expect(scroll).toHaveBeenNthCalledWith(2, "code_chunks", {
+      limit: 5,
+      filter: {
+        must: [
+          { key: "userId", match: { value: "user-1" } },
+          { key: "repositoryId", match: { value: "repo-1" } },
+          { key: "branch", match: { value: "main" } },
+          { key: "commitSha", match: { value: "abc123" } },
+        ],
+        should: [
+          { key: "references", match: { value: "authenticate" } },
+          { key: "imports", match: { value: "authenticate" } },
+          { key: "exports", match: { value: "authenticate" } },
+        ],
+      },
+      with_payload: true,
+      with_vector: false,
+    });
   });
 
   it("rejects malformed and cross-tenant results", async () => {

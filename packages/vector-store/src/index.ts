@@ -6,6 +6,7 @@ export {
   type CodeChunkSearchErrorCode,
   type CodeChunkSearchRequest,
   type CodeChunkSearchResult,
+  type ExactSymbolSearchRequest,
 } from "./code-chunk-search.js";
 
 export {

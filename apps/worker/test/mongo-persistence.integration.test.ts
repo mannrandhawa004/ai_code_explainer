@@ -2,6 +2,7 @@ import {
   IndexingJobModel,
   RepositoryFileModel,
   RepositoryModel,
+  SymbolModel,
   connectDatabase,
   disconnectDatabase,
 } from "@codebase-explainer/database";
@@ -39,6 +40,7 @@ describeWithMongo("Mongo indexing persistence integration", () => {
     await Promise.all([
       IndexingJobModel.deleteOne({ bullJobId }),
       RepositoryFileModel.deleteMany({ repositoryId }),
+      SymbolModel.deleteMany({ repositoryId }),
       RepositoryModel.deleteOne({ _id: repositoryId }),
     ]);
     await disconnectDatabase();
@@ -81,16 +83,29 @@ describeWithMongo("Mongo indexing persistence integration", () => {
           language: "typescript",
           contentHash: "a".repeat(64),
           sourceBytes: 26,
+          imports: ["./dependency.js"],
+          exports: ["ready"],
+          symbols: [
+            {
+              name: "ready",
+              type: "variable",
+              startLine: 1,
+              endLine: 1,
+              imports: ["./dependency.js"],
+              references: [],
+            },
+          ],
         },
       ],
       chunks: 2,
       languages: new Map([["typescript", 1]]),
     });
 
-    const [repository, job, file] = await Promise.all([
+    const [repository, job, file, symbol] = await Promise.all([
       RepositoryModel.findById(repositoryId).lean().exec(),
       IndexingJobModel.findOne({ bullJobId }).lean().exec(),
       RepositoryFileModel.findOne({ repositoryId }).lean().exec(),
+      SymbolModel.findOne({ repositoryId }).lean().exec(),
     ]);
     expect(repository).toMatchObject({
       status: "ready",
@@ -107,6 +122,15 @@ describeWithMongo("Mongo indexing persistence integration", () => {
       path: "src/index.ts",
       language: "typescript",
       size: 26,
+      imports: ["./dependency.js"],
+      exports: ["ready"],
+      symbols: ["ready"],
+    });
+    expect(symbol).toMatchObject({
+      name: "ready",
+      type: "variable",
+      startLine: 1,
+      endLine: 1,
     });
   });
 });

@@ -22,6 +22,16 @@ export type CodeChunkSearchRequest = {
   signal?: AbortSignal;
 };
 
+export type ExactSymbolSearchRequest = {
+  symbolName: string;
+  userId: string;
+  repositoryId: string;
+  branch: string;
+  commitSha: string;
+  limit?: number;
+  signal?: AbortSignal;
+};
+
 export type CodeChunkSearchResult = {
   id: string;
   score: number;
@@ -131,7 +141,10 @@ function mapSearchResult(
     score: number;
     payload?: Record<string, unknown> | null;
   },
-  request: CodeChunkSearchRequest,
+  request: Pick<
+    CodeChunkSearchRequest,
+    "userId" | "repositoryId" | "branch" | "commitSha"
+  >,
 ): CodeChunkSearchResult {
   if (typeof point.id !== "string" || !canonicalUuidPattern.test(point.id)) {
     throw new CodeChunkSearchError(
@@ -289,6 +302,100 @@ export class QdrantCodeChunkSearch {
       throw new CodeChunkSearchError(
         "SEARCH_FAILED",
         "Qdrant failed to retrieve repository code chunks",
+        { cause: error },
+      );
+    }
+  }
+
+  async searchExactSymbol(
+    request: ExactSymbolSearchRequest,
+  ): Promise<CodeChunkSearchResult[]> {
+    for (const [fieldName, value] of [
+      ["symbolName", request.symbolName],
+      ["userId", request.userId],
+      ["repositoryId", request.repositoryId],
+      ["branch", request.branch],
+      ["commitSha", request.commitSha],
+    ] as const) {
+      assertSafeString(value, fieldName);
+    }
+    const limit = request.limit ?? defaultCodeChunkSearchLimit;
+    if (
+      !Number.isSafeInteger(limit) ||
+      limit <= 0 ||
+      limit > maximumCodeChunkSearchLimit
+    ) {
+      throw new CodeChunkSearchError(
+        "INVALID_QUERY",
+        `limit must be between 1 and ${maximumCodeChunkSearchLimit}`,
+      );
+    }
+    assertNotAborted(request.signal);
+
+    try {
+      const repositoryConditions = [
+        { key: "userId", match: { value: request.userId } },
+        {
+          key: "repositoryId",
+          match: { value: request.repositoryId },
+        },
+        { key: "branch", match: { value: request.branch } },
+        { key: "commitSha", match: { value: request.commitSha } },
+      ];
+      const [definitions, occurrences] = await Promise.all([
+        this.vectorStore.client.scroll(this.vectorStore.config.collectionName, {
+          limit,
+          filter: {
+            must: [
+              ...repositoryConditions,
+              { key: "symbolName", match: { value: request.symbolName } },
+            ],
+          },
+          with_payload: true,
+          with_vector: false,
+        }),
+        this.vectorStore.client.scroll(this.vectorStore.config.collectionName, {
+          limit,
+          filter: {
+            must: repositoryConditions,
+            should: [
+              { key: "references", match: { value: request.symbolName } },
+              { key: "imports", match: { value: request.symbolName } },
+              { key: "exports", match: { value: request.symbolName } },
+            ],
+          },
+          with_payload: true,
+          with_vector: false,
+        }),
+      ]);
+      assertNotAborted(request.signal);
+      const exactMatches = new Map<string, CodeChunkSearchResult>();
+      for (const point of definitions.points) {
+        const result = mapSearchResult({ ...point, score: 1 }, request);
+        exactMatches.set(result.id, result);
+      }
+      for (const point of occurrences.points) {
+        const result = mapSearchResult({ ...point, score: 0.95 }, request);
+        if (!exactMatches.has(result.id)) {
+          exactMatches.set(result.id, result);
+        }
+      }
+      return [...exactMatches.values()]
+        .sort(
+          (left, right) =>
+            right.score - left.score ||
+            left.filePath.localeCompare(right.filePath) ||
+            left.startLine - right.startLine ||
+            left.chunkIndex - right.chunkIndex,
+        )
+        .slice(0, limit);
+    } catch (error) {
+      if (error instanceof CodeChunkSearchError) {
+        throw error;
+      }
+      throw new CodeChunkSearchError(
+        "SEARCH_FAILED",
+        "Qdrant failed to retrieve the requested repository symbol",
         { cause: error },
       );
     }

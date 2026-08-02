@@ -35,6 +35,7 @@ export type CodeChunkPayload = {
   content: string;
   imports: string[];
   exports: string[];
+  references: string[];
   embeddingModel: string;
   embeddingDimensions: number;
   embeddingTokenCount: number;
@@ -297,6 +298,7 @@ export function toCodeChunkVectorPoint(
       content: chunk.content,
       imports: [...chunk.imports],
       exports: [...chunk.exports],
+      references: [...(chunk.references ?? [])],
       embeddingModel: item.embeddingModel,
       embeddingDimensions: item.embeddingDimensions,
       embeddingTokenCount: item.embeddingTokenCount,

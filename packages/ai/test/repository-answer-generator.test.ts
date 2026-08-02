@@ -5,6 +5,7 @@ import {
   classifyRepositoryQuestion,
   createOpenAIRepositoryAnswerGeneratorFromEnv,
   defaultAnswerModel,
+  extractExactSymbolName,
   type AnswerProvider,
   type AnswerProviderRequest,
   type RepositoryAnswerRequest,
@@ -83,6 +84,17 @@ describe("classifyRepositoryQuestion", () => {
     ["How does authentication work?", "semantic"],
   ])("classifies %s as %s", (question, category) => {
     expect(classifyRepositoryQuestion(question)).toBe(category);
+  });
+
+  it("extracts quoted and intent-qualified symbol names", () => {
+    expect(extractExactSymbolName("Where is `verifyToken` used?")).toBe(
+      "verifyToken",
+    );
+    expect(extractExactSymbolName("Find UserService")).toBe("UserService");
+    expect(extractExactSymbolName("Where is helper() defined?")).toBe(
+      "helper",
+    );
+    expect(extractExactSymbolName("Where is the config file?")).toBeUndefined();
   });
 });
 

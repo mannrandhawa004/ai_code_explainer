@@ -88,6 +88,7 @@ function createDependencies(
   };
   const retriever = {
     search: vi.fn().mockResolvedValue([chunk]),
+    searchExactSymbol: vi.fn().mockResolvedValue([]),
   };
   const answerer = {
     generate: vi.fn().mockResolvedValue({
@@ -218,7 +219,10 @@ describe("RepositoryQuestionService", () => {
 
   it("returns a deterministic insufficient-context answer without a model call", async () => {
     const dependencies = createDependencies({
-      retriever: { search: vi.fn().mockResolvedValue([]) },
+      retriever: {
+        search: vi.fn().mockResolvedValue([]),
+        searchExactSymbol: vi.fn().mockResolvedValue([]),
+      },
     });
     const service = new RepositoryQuestionService(dependencies);
 
@@ -252,7 +256,12 @@ describe("RepositoryQuestionService", () => {
     ],
     [
       "RETRIEVAL_FAILED",
-      { retriever: { search: vi.fn().mockRejectedValue(new Error("offline")) } },
+      {
+        retriever: {
+          search: vi.fn().mockRejectedValue(new Error("offline")),
+          searchExactSymbol: vi.fn().mockResolvedValue([]),
+        },
+      },
     ],
     [
       "ANSWER_GENERATION_FAILED",
@@ -292,5 +301,47 @@ describe("RepositoryQuestionService", () => {
       }),
     ).rejects.toBeInstanceOf(RepositoryQuestionError);
     expect(dependencies.repositories.findOwnedRepository).not.toHaveBeenCalled();
+  });
+
+  it("prioritizes and deduplicates exact symbol matches", async () => {
+    const semanticMatch = { ...chunk, score: 0.92 };
+    const exactMatch = {
+      ...chunk,
+      score: 1,
+      filePath: "src/middleware/authenticate.ts",
+    };
+    const dependencies = createDependencies({
+      retriever: {
+        search: vi.fn().mockResolvedValue([semanticMatch]),
+        searchExactSymbol: vi.fn().mockResolvedValue([exactMatch]),
+      },
+    });
+
+    await new RepositoryQuestionService(dependencies).ask({
+      authenticatedUserId: repository.userId,
+      repositoryId: repository.id,
+      question: "Where is `authenticate` used?",
+    });
+
+    expect(dependencies.retriever.searchExactSymbol).toHaveBeenCalledWith({
+      symbolName: "authenticate",
+      userId: repository.userId,
+      repositoryId: repository.id,
+      branch: "main",
+      commitSha: "abc123",
+      limit: 15,
+    });
+    expect(dependencies.answerer.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: "exact_symbol",
+        sources: [
+          expect.objectContaining({
+            id: chunk.id,
+            filePath: "src/middleware/authenticate.ts",
+            score: 1,
+          }),
+        ],
+      }),
+    );
   });
 });

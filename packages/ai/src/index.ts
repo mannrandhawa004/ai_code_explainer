@@ -44,6 +44,7 @@ export {
 } from "./embedding-text.js";
 export {
   classifyRepositoryQuestion,
+  extractExactSymbolName,
   repositoryQuestionCategories,
   type RepositoryQuestionCategory,
 } from "./question-classifier.js";

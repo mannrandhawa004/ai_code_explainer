@@ -106,6 +106,7 @@ describe("toCodeChunkVectorPoint", () => {
         content: "export function run1() {\n  return 1;\n}",
         imports: ["node:path"],
         exports: ["run1"],
+        references: [],
         embeddingModel: "text-embedding-3-small",
         embeddingDimensions: 4,
         embeddingTokenCount: 24,
