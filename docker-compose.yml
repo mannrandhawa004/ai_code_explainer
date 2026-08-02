@@ -1,10 +1,22 @@
+x-application-defaults: &application-defaults
+  restart: unless-stopped
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
 services:
   mongodb:
     image: mongo:8.0
-    container_name: codebase-explainer-mongodb
     restart: unless-stopped
     ports:
-      - "127.0.0.1:27017:27017"
+      - "127.0.0.1:${CODEBASE_EXPLAINER_MONGODB_PORT:-27017}:27017"
     volumes:
       - mongodb_data:/data/db
     healthcheck:
@@ -16,11 +28,10 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.18.2
-    container_name: codebase-explainer-qdrant
     restart: unless-stopped
     ports:
-      - "127.0.0.1:6333:6333"
-      - "127.0.0.1:6334:6334"
+      - "127.0.0.1:${CODEBASE_EXPLAINER_QDRANT_HTTP_PORT:-6333}:6333"
+      - "127.0.0.1:${CODEBASE_EXPLAINER_QDRANT_GRPC_PORT:-6334}:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
@@ -32,7 +43,6 @@ services:
 
   redis:
     image: redis:8.8.1-alpine
-    container_name: codebase-explainer-redis
     restart: unless-stopped
     command:
       - redis-server
@@ -41,7 +51,7 @@ services:
       - --appendfsync
       - everysec
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:${CODEBASE_EXPLAINER_REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -50,6 +60,70 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+
+  api:
+    <<: *application-defaults
+    image: ai-codebase-explainer-api:local
+    profiles:
+      - application
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      target: api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: development
+      API_PORT: 5000
+      FRONTEND_URL: http://localhost:3000
+      GITHUB_CALLBACK_URL: http://localhost:5000/api/auth/github/callback
+      MONGODB_URI: mongodb://mongodb:27017/codebase_explainer
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+    ports:
+      - "127.0.0.1:${CODEBASE_EXPLAINER_API_PORT:-5000}:5000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    pids_limit: 256
+    stop_grace_period: 20s
+
+  worker:
+    <<: *application-defaults
+    image: ai-codebase-explainer-worker:local
+    profiles:
+      - application
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      target: worker
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: development
+      MONGODB_URI: mongodb://mongodb:27017/codebase_explainer
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      TEMP_REPOSITORY_DIR: /tmp/codebase-explainer
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=2g
+    pids_limit: 512
+    stop_grace_period: 45s
 
 volumes:
   mongodb_data:

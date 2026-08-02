@@ -8,7 +8,9 @@ import type {
   GitHubPushWebhookJobData,
   RepositoryIndexingJobData,
 } from "@codebase-explainer/shared";
-import { trusted, type Types } from "mongoose";
+import mongoose, { type Types as MongooseTypes } from "mongoose";
+
+const { trusted } = mongoose;
 
 import type { RepositoryIndexingProducerContract } from "../queues/repository-indexing.producer.js";
 
@@ -168,7 +170,7 @@ export class MongoGitHubWebhookRepositoryOperations
   }
 
   private async revokeRepositoryDocuments(
-    repositoryIds: readonly Types.ObjectId[],
+    repositoryIds: readonly MongooseTypes.ObjectId[],
   ): Promise<number> {
     if (repositoryIds.length === 0) {
       return 0;

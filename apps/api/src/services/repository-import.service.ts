@@ -9,7 +9,9 @@ import {
   validateGitBranch,
 } from "@codebase-explainer/repository";
 import type { RepositoryIndexingJobData } from "@codebase-explainer/shared";
-import { Types, trusted } from "mongoose";
+import mongoose, { type Types as MongooseTypes } from "mongoose";
+
+const { Types, trusted } = mongoose;
 
 import {
   getDefaultRepositoryIndexingQueue,
@@ -129,7 +131,7 @@ export interface RepositoryImportServiceContract {
   ): Promise<RepositoryCancellationResult>;
 }
 
-function toObjectId(value: string, fieldName: string): Types.ObjectId {
+function toObjectId(value: string, fieldName: string): MongooseTypes.ObjectId {
   if (!objectIdPattern.test(value)) {
     throw new RepositoryImportError(
       "INVALID_REQUEST",

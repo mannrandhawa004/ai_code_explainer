@@ -13,6 +13,24 @@ const optionalTrimmedString = z
   .optional()
   .transform((value) => value?.trim() || undefined);
 
+function usesSecureMongoTransport(value: string): boolean {
+  if (value.toLowerCase().startsWith("mongodb+srv://")) {
+    return true;
+  }
+  if (!value.toLowerCase().startsWith("mongodb://")) {
+    return false;
+  }
+  const query = value.split("?", 2)[1];
+  if (query === undefined) {
+    return false;
+  }
+  const parameters = new URLSearchParams(query);
+  return (
+    parameters.get("tls")?.toLowerCase() === "true" ||
+    parameters.get("ssl")?.toLowerCase() === "true"
+  );
+}
+
 const workerEnvSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -32,6 +50,7 @@ const workerEnvSchema = z.object({
     .string()
     .optional()
     .transform((value) => value?.trim() || undefined),
+  OPENAI_API_KEY: optionalTrimmedString,
   QDRANT_COLLECTION: z.string().min(1).default("code_chunks"),
   QDRANT_VECTOR_SIZE: z.coerce.number().int().positive().default(1_536),
   QDRANT_REQUEST_TIMEOUT_MS: z.coerce
@@ -85,13 +104,6 @@ export function parseWorkerEnvironment(
     );
   }
 
-  if (
-    result.data.NODE_ENV === "production" &&
-    !result.data.REDIS_URL.startsWith("rediss://")
-  ) {
-    throw new Error("REDIS_URL must use TLS (rediss://) in production");
-  }
-
   const configuredGitHubValues = [
     result.data.GITHUB_APP_ID,
     result.data.GITHUB_PRIVATE_KEY,
@@ -101,10 +113,27 @@ export function parseWorkerEnvironment(
       "Private repository indexing requires GITHUB_APP_ID and GITHUB_PRIVATE_KEY",
     );
   }
-  if (result.data.NODE_ENV === "production" && configuredGitHubValues !== 2) {
-    throw new Error(
-      "Private repository indexing must be configured in production",
-    );
+  if (result.data.NODE_ENV === "production") {
+    if (!result.data.REDIS_URL.startsWith("rediss://")) {
+      throw new Error("REDIS_URL must use TLS (rediss://) in production");
+    }
+    if (!usesSecureMongoTransport(result.data.MONGODB_URI)) {
+      throw new Error("MONGODB_URI must use TLS in production");
+    }
+    if (!result.data.QDRANT_URL.startsWith("https://")) {
+      throw new Error("QDRANT_URL must use HTTPS in production");
+    }
+    if (!result.data.QDRANT_API_KEY) {
+      throw new Error("QDRANT_API_KEY must be configured in production");
+    }
+    if (!result.data.OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY must be configured in production");
+    }
+    if (configuredGitHubValues !== 2) {
+      throw new Error(
+        "Private repository indexing must be configured in production",
+      );
+    }
   }
 
   return result.data;

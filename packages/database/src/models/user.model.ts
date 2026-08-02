@@ -1,10 +1,9 @@
-import {
-  Schema,
-  model,
-  models,
+import mongoose, {
   type HydratedDocument,
   type Model,
 } from "mongoose";
+
+const { Schema, model, models } = mongoose;
 
 export interface User {
   githubId: string;
