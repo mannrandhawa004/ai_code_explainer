@@ -40,7 +40,18 @@ const clonedRepository: ClonedPublicRepository = {
 
 const filtered: FilteredRepositoryFiles = {
   rootDirectory: clonedRepository.directory,
-  files: [],
+  files: [
+    {
+      absolutePath: "C:/temporary/repository/src/index.ts",
+      relativePath: "src/index.ts",
+      name: "index.ts",
+      depth: 2,
+      stats: {} as FilteredRepositoryFiles["files"][number]["stats"],
+      size: 26,
+      modifiedAtMs: 0,
+      mode: 0o100644,
+    },
+  ],
   totalBytes: 20,
   exclusions: [],
   scanSummary: {
@@ -126,10 +137,11 @@ function createPersistence(): IndexingPersistence {
       private: false,
       selectedBranch: "main",
     }),
+    findRepositoryFiles: vi.fn().mockResolvedValue([]),
     isCancellationRequested: vi.fn().mockResolvedValue(false),
     begin: vi.fn().mockResolvedValue(undefined),
     updateProgress: vi.fn().mockResolvedValue(undefined),
-    complete: vi.fn().mockResolvedValue(undefined),
+    complete: vi.fn().mockResolvedValue({ superseded: false }),
     fail: vi.fn().mockResolvedValue(undefined),
     cancel: vi.fn().mockResolvedValue(undefined),
   };
@@ -146,6 +158,11 @@ function createDependencies(
       ),
     },
     filter: { filter: vi.fn().mockResolvedValue(filtered) },
+    hasher: {
+      hashFiles: vi.fn().mockResolvedValue([
+        { file: filtered.files[0]!, contentHash: "a".repeat(64) },
+      ]),
+    },
     chunker: { chunkFiles: vi.fn().mockResolvedValue(chunked) },
     embedder: { embedChunks: vi.fn().mockResolvedValue(embedded) },
     vectorCollection: {
@@ -156,6 +173,21 @@ function createDependencies(
       }),
     },
     chunkStore: {
+      deleteRepositoryChunks: vi.fn().mockResolvedValue({
+        collectionName: "code_chunks",
+        status: "completed",
+      }),
+      deleteFileChunks: vi.fn().mockResolvedValue({
+        collectionName: "code_chunks",
+        pathsDeleted: 0,
+        batches: 0,
+        operationIds: [],
+        status: "completed",
+      }),
+      promoteRepositoryCommit: vi.fn().mockResolvedValue({
+        collectionName: "code_chunks",
+        status: "completed",
+      }),
       upsert: vi.fn().mockResolvedValue({
         collectionName: "code_chunks",
         pointsUpserted: 1,
@@ -208,11 +240,13 @@ describe("RepositoryIndexingProcessor", () => {
         repositoryId,
         branch: "main",
         commitSha,
-        chunks: 1,
+        totalChunks: 1,
+        totalFiles: 1,
         files: [
           expect.objectContaining({
             filePath: "src/index.ts",
             language: "typescript",
+            chunkCount: 1,
             imports: ["express"],
             exports: ["ready"],
             symbols: [expect.objectContaining({ name: "ready" })],
@@ -222,7 +256,196 @@ describe("RepositoryIndexingProcessor", () => {
     );
     expect(dependencies.chunkStore.upsert).toHaveBeenCalledWith(
       embedded.items,
-      {},
+      { wait: true },
+    );
+  });
+
+  it("embeds only changed files and removes deleted paths incrementally", async () => {
+    const persistence = createPersistence();
+    vi.mocked(persistence.findRepository).mockResolvedValue({
+      id: repositoryId,
+      userId,
+      fullName: "owner/repository",
+      private: false,
+      selectedBranch: "main",
+      lastIndexedCommit: "1".repeat(40),
+      pendingIndexCommit: commitSha,
+    });
+    vi.mocked(persistence.findRepositoryFiles).mockResolvedValue([
+      {
+        filePath: "src/index.ts",
+        language: "typescript",
+        contentHash: "d".repeat(64),
+        sourceBytes: 24,
+        chunkCount: 1,
+      },
+      {
+        filePath: "src/unchanged.ts",
+        language: "typescript",
+        contentHash: "c".repeat(64),
+        sourceBytes: 10,
+        chunkCount: 2,
+      },
+      {
+        filePath: "src/removed.ts",
+        language: "typescript",
+        contentHash: "e".repeat(64),
+        sourceBytes: 10,
+        chunkCount: 1,
+      },
+    ]);
+    const unchangedFile = {
+      ...filtered.files[0]!,
+      absolutePath: "C:/temporary/repository/src/unchanged.ts",
+      relativePath: "src/unchanged.ts",
+      name: "unchanged.ts",
+      size: 10,
+    };
+    const dependencies = createDependencies(persistence);
+    vi.mocked(dependencies.filter.filter).mockResolvedValue({
+      ...filtered,
+      files: [filtered.files[0]!, unchangedFile],
+      totalBytes: 36,
+    });
+    vi.mocked(dependencies.hasher.hashFiles).mockResolvedValue([
+      { file: filtered.files[0]!, contentHash: "a".repeat(64) },
+      { file: unchangedFile, contentHash: "c".repeat(64) },
+    ]);
+
+    await expect(
+      createProcessor(dependencies).process(createJob(), jobData),
+    ).resolves.toMatchObject({
+      filesIndexed: 1,
+      chunksIndexed: 1,
+      commitSha,
+    });
+
+    expect(
+      dependencies.chunkStore.deleteRepositoryChunks,
+    ).not.toHaveBeenCalled();
+    expect(dependencies.chunkStore.deleteFileChunks).toHaveBeenCalledWith(
+      {
+        userId,
+        repositoryId,
+        branch: "main",
+        filePaths: ["src/index.ts", "src/removed.ts"],
+      },
+      { wait: true },
+    );
+    expect(
+      dependencies.chunkStore.promoteRepositoryCommit,
+    ).toHaveBeenCalledWith(
+      {
+        userId,
+        repositoryId,
+        branch: "main",
+        toCommitSha: commitSha,
+      },
+      { wait: true },
+    );
+    expect(persistence.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedPendingCommit: commitSha,
+        retainedFilePaths: ["src/unchanged.ts"],
+        removedFilePaths: ["src/removed.ts"],
+        totalFiles: 2,
+        totalChunks: 3,
+        languages: new Map([["typescript", 2]]),
+      }),
+    );
+  });
+
+  it("coalesces a newer pending push into the active indexing job", async () => {
+    const nextCommitSha = "f".repeat(40);
+    const persistence = createPersistence();
+    vi.mocked(persistence.findRepository)
+      .mockResolvedValueOnce({
+        id: repositoryId,
+        userId,
+        fullName: "owner/repository",
+        private: false,
+        selectedBranch: "main",
+        pendingIndexCommit: commitSha,
+      })
+      .mockResolvedValueOnce({
+        id: repositoryId,
+        userId,
+        fullName: "owner/repository",
+        private: false,
+        selectedBranch: "main",
+        lastIndexedCommit: commitSha,
+        pendingIndexCommit: nextCommitSha,
+      });
+    vi.mocked(persistence.findRepositoryFiles)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          filePath: "src/index.ts",
+          language: "typescript",
+          contentHash: "a".repeat(64),
+          sourceBytes: 26,
+          chunkCount: 1,
+        },
+      ]);
+    vi.mocked(persistence.complete)
+      .mockResolvedValueOnce({
+        superseded: true,
+        pendingCommitSha: nextCommitSha,
+      })
+      .mockResolvedValueOnce({ superseded: false });
+    const dependencies = createDependencies(persistence);
+    let cloneCount = 0;
+    vi.mocked(dependencies.cloner.withClone).mockImplementation(
+      async (_request, operation) => {
+        cloneCount += 1;
+        return operation({
+          ...clonedRepository,
+          commitSha: cloneCount === 1 ? commitSha : nextCommitSha,
+        });
+      },
+    );
+    vi.mocked(dependencies.chunker.chunkFiles)
+      .mockResolvedValueOnce(chunked)
+      .mockResolvedValueOnce({
+        chunks: [],
+        fileSummaries: [],
+        filesProcessed: 0,
+        totalSourceBytes: 0,
+        totalSourceCharacters: 0,
+      });
+    vi.mocked(dependencies.embedder.embedChunks)
+      .mockResolvedValueOnce(embedded)
+      .mockResolvedValueOnce({
+        items: [],
+        model: "test-embedding-model",
+        dimensions: 2,
+        usage: {
+          promptTokens: 0,
+          totalTokens: 0,
+          requests: 0,
+          uniqueInputs: 0,
+        },
+      });
+
+    await expect(
+      createProcessor(dependencies).process(createJob(), jobData),
+    ).resolves.toEqual({
+      repositoryId,
+      branch: "main",
+      commitSha: nextCommitSha,
+      filesIndexed: 1,
+      chunksIndexed: 1,
+      embeddingModel: "test-embedding-model",
+      embeddingTokens: 8,
+    });
+    expect(dependencies.cloner.withClone).toHaveBeenCalledTimes(2);
+    expect(persistence.complete).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ expectedPendingCommit: commitSha }),
+    );
+    expect(persistence.complete).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ expectedPendingCommit: nextCommitSha }),
     );
   });
 

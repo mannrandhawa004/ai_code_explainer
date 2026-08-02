@@ -46,6 +46,7 @@ export {
   defaultMaxSourceBytesPerFile,
   defaultMaxSourceCharactersPerFile,
   defaultSourceReadConcurrency,
+  createRepositoryContentHash,
   detectRepositorySourceLanguage,
   type ChunkedRepositoryFileSummary,
   type ChunkedRepositorySymbol,
@@ -59,6 +60,14 @@ export {
   type RepositorySourceLanguage,
   type SourceFileChunkingResult,
 } from "./line-based-chunker.js";
+export {
+  RepositoryFileHashError,
+  RepositoryFileHasher,
+  defaultRepositoryHashConcurrency,
+  type HashedRepositoryFile,
+  type RepositoryFileHasherOptions,
+  type RepositoryFileHashErrorCode,
+} from "./repository-file-hasher.js";
 export { RepositoryTreeSitterChunker } from "./repository-tree-sitter-chunker.js";
 export {
   TreeSitterCodeChunker,

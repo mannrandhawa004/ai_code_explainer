@@ -256,7 +256,7 @@ function validateRepositoryContext(context: RepositoryChunkContext): void {
   assertMetadataValue(context.commitSha, "commitSha");
 }
 
-function hashContent(content: string): string {
+export function createRepositoryContentHash(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
@@ -357,7 +357,7 @@ export class LineBasedChunker {
     while (start < lines.length) {
       const end = Math.min(start + chunkSizeLines, lines.length);
       const chunkContent = lines.slice(start, end).join("\n");
-      const contentHash = hashContent(chunkContent);
+      const contentHash = createRepositoryContentHash(chunkContent);
       const sourceStartLine = metadata.sourceStartLine ?? 1;
       const startLine = sourceStartLine + start;
       const endLine = sourceStartLine + end - 1;
@@ -537,7 +537,7 @@ export class RepositoryLineBasedChunker {
               language,
               sourceBytes: contentBytes.byteLength,
               sourceCharacters: content.length,
-              contentHash: hashContent(content),
+              contentHash: createRepositoryContentHash(content),
               chunkCount: chunks.length,
               chunkingStrategy: sourceResult.chunkingStrategy,
               imports: sourceResult.imports,

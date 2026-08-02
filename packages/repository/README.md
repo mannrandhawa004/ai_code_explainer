@@ -2,7 +2,7 @@
 
 Safe, reusable repository ingestion primitives shared by the API and indexing worker.
 
-Step 6 introduces public GitHub repository cloning. Step 7 adds bounded, deterministic file discovery without following symbolic links. Step 8 adds secure source-file filtering. Step 9 adds deterministic line-based source chunking. Step 16 adds Tree-sitter AST parsing and symbol-aware chunks.
+Step 6 introduces public GitHub repository cloning. Step 7 adds bounded, deterministic file discovery without following symbolic links. Step 8 adds secure source-file filtering. Step 9 adds deterministic line-based source chunking. Step 16 adds Tree-sitter AST parsing and symbol-aware chunks. Step 19 adds bounded UTF-8 file hashing using the exact content-hash algorithm used by chunk summaries.
 
 The cloner accepts only canonical public `https://github.com/owner/repository` URLs. It disables inherited Git configuration and credential prompts, rejects unsafe branch names and protocols, creates a depth-one single-branch clone, and removes the temporary source tree whether processing succeeds or fails.
 

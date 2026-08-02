@@ -65,6 +65,25 @@ export class MongoGitHubWebhookRepositoryOperations
     let deduplicatedRepositories = 0;
 
     for (const repository of matching) {
+      repository.owner = input.owner;
+      repository.name = input.repository;
+      repository.fullName = input.fullName;
+      repository.private = input.private;
+      repository.defaultBranch = input.defaultBranch;
+      repository.set("githubAccessRevokedAt", undefined);
+      repository.set("errorMessage", undefined);
+
+      if (
+        repository.status === "ready" &&
+        repository.lastIndexedCommit === input.commitSha
+      ) {
+        repository.set("pendingIndexCommit", undefined);
+        await repository.save();
+        deduplicatedRepositories += 1;
+        continue;
+      }
+
+      repository.pendingIndexCommit = input.commitSha;
       if (inProgressRepositoryStatuses.has(repository.status)) {
         const existingJob = await IndexingJobModel.findOne({
           repositoryId: repository._id,
@@ -74,19 +93,13 @@ export class MongoGitHubWebhookRepositoryOperations
           .lean()
           .exec();
         if (existingJob) {
+          await repository.save();
           deduplicatedRepositories += 1;
           continue;
         }
       }
 
-      repository.owner = input.owner;
-      repository.name = input.repository;
-      repository.fullName = input.fullName;
-      repository.private = input.private;
-      repository.defaultBranch = input.defaultBranch;
       repository.status = "queued";
-      repository.set("githubAccessRevokedAt", undefined);
-      repository.set("errorMessage", undefined);
       await repository.save();
 
       const data: RepositoryIndexingJobData = {
@@ -115,6 +128,7 @@ export class MongoGitHubWebhookRepositoryOperations
       } catch (cause) {
         repository.status = "failed";
         repository.errorMessage = "The indexing queue is unavailable";
+        repository.set("pendingIndexCommit", undefined);
         await repository.save();
         throw cause;
       }
@@ -168,6 +182,7 @@ export class MongoGitHubWebhookRepositoryOperations
           githubAccessRevokedAt: now,
           errorMessage: revokedMessage,
         },
+        $unset: { pendingIndexCommit: 1 },
       },
       { runValidators: true },
     ).exec();

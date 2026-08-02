@@ -15,6 +15,7 @@ export interface RepositoryFile {
   language: string;
   hash: string;
   size: number;
+  chunkCount?: number;
   imports: string[];
   exports: string[];
   symbols: string[];
@@ -35,6 +36,7 @@ const repositoryFileSchema = new Schema<RepositoryFile>(
     language: { type: String, required: true, trim: true },
     hash: { type: String, required: true, trim: true },
     size: { type: Number, required: true, min: 0 },
+    chunkCount: { type: Number, min: 0 },
     imports: { type: [String], default: () => [] },
     exports: { type: [String], default: () => [] },
     symbols: { type: [String], default: () => [] },

@@ -35,6 +35,10 @@ function createClient(
     getCollection: vi.fn(),
     query: vi.fn().mockResolvedValue({ points: [] }),
     retrieve: vi.fn().mockResolvedValue([]),
+    setPayload: vi.fn().mockResolvedValue({
+      operation_id: 2,
+      status: "completed",
+    }),
     upsert: vi.fn().mockResolvedValue({
       operation_id: 1,
       status: "completed",
@@ -341,5 +345,86 @@ describe("QdrantCodeChunkStore.deleteRepositoryChunks", () => {
         repositoryId: "repo-1",
       }),
     ).rejects.toMatchObject({ code: "DELETE_FAILED" });
+  });
+});
+
+describe("QdrantCodeChunkStore incremental updates", () => {
+  it("deletes only selected file paths within the tenant repository branch", async () => {
+    const client = createClient();
+    const store = new QdrantCodeChunkStore(config, client);
+
+    await expect(
+      store.deleteFileChunks({
+        userId: "user-1",
+        repositoryId: "repo-1",
+        branch: "main",
+        filePaths: ["src/changed.ts", "src/deleted.ts", "src/changed.ts"],
+      }),
+    ).resolves.toMatchObject({
+      collectionName: "code_chunks",
+      pathsDeleted: 2,
+      batches: 1,
+      status: "completed",
+    });
+    expect(client.delete).toHaveBeenCalledWith("code_chunks", {
+      wait: true,
+      ordering: "medium",
+      filter: {
+        must: [
+          { key: "userId", match: { value: "user-1" } },
+          { key: "repositoryId", match: { value: "repo-1" } },
+          { key: "branch", match: { value: "main" } },
+          {
+            key: "filePath",
+            match: { any: ["src/changed.ts", "src/deleted.ts"] },
+          },
+        ],
+      },
+    });
+  });
+
+  it("promotes every surviving branch vector to the active commit", async () => {
+    const client = createClient();
+    const store = new QdrantCodeChunkStore(config, client);
+
+    await expect(
+      store.promoteRepositoryCommit({
+        userId: "user-1",
+        repositoryId: "repo-1",
+        branch: "main",
+        toCommitSha: "1".repeat(40),
+      }),
+    ).resolves.toEqual({
+      collectionName: "code_chunks",
+      operationId: 2,
+      status: "completed",
+    });
+    expect(client.setPayload).toHaveBeenCalledWith("code_chunks", {
+      payload: { commitSha: "1".repeat(40) },
+      wait: true,
+      ordering: "medium",
+      filter: {
+        must: [
+          { key: "userId", match: { value: "user-1" } },
+          { key: "repositoryId", match: { value: "repo-1" } },
+          { key: "branch", match: { value: "main" } },
+        ],
+      },
+    });
+  });
+
+  it("treats an empty file deletion as a completed no-op", async () => {
+    const client = createClient();
+    const store = new QdrantCodeChunkStore(config, client);
+
+    await expect(
+      store.deleteFileChunks({
+        userId: "user-1",
+        repositoryId: "repo-1",
+        branch: "main",
+        filePaths: [],
+      }),
+    ).resolves.toMatchObject({ pathsDeleted: 0, batches: 0 });
+    expect(client.delete).not.toHaveBeenCalled();
   });
 });

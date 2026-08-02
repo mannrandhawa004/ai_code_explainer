@@ -81,6 +81,25 @@ describeWithMongo("GitHub webhook repository operations", () => {
         branch: "main",
       }),
     );
+    await expect(
+      service.enqueuePush({
+        ...push,
+        deliveryId: "82d3162e-cc78-11e3-81ab-4c9367dc0958",
+        payloadSha256: "c".repeat(64),
+        commitSha: "d".repeat(40),
+      }),
+    ).resolves.toEqual({
+      matchedRepositories: 1,
+      queuedRepositories: 0,
+      deduplicatedRepositories: 1,
+    });
+    expect(producer.enqueue).toHaveBeenCalledTimes(1);
+    await expect(
+      RepositoryModel.findById(repositoryId)
+        .select("pendingIndexCommit")
+        .lean()
+        .exec(),
+    ).resolves.toMatchObject({ pendingIndexCommit: "d".repeat(40) });
 
     await expect(
       service.revokeInstallation(installationId),
@@ -92,6 +111,7 @@ describeWithMongo("GitHub webhook repository operations", () => {
       errorMessage: "GitHub repository access was revoked",
       githubAccessRevokedAt: expect.any(Date),
     });
+    expect(repository).not.toHaveProperty("pendingIndexCommit");
     expect(job).toMatchObject({ status: "cancelled" });
   });
 });

@@ -9,12 +9,16 @@ import {
   RepositoryCloneError,
   RepositoryFileFilter,
   RepositoryFileFilterError,
+  RepositoryFileHashError,
+  RepositoryFileHasher,
   RepositoryLineBasedChunker,
   RepositoryTreeSitterChunker,
   RepositoryScanError,
+  defaultMaxRepositoryChunks,
   normalizePublicGitHubRepository,
   type ClonedPublicRepository,
   type FilteredRepositoryFiles,
+  type HashedRepositoryFile,
   type PublicRepositoryCloneRequest,
   type RepositoryChunkingResult,
 } from "@codebase-explainer/repository";
@@ -27,6 +31,8 @@ import {
   QdrantCodeChunkStore,
   QdrantVectorStore,
   type CodeChunkUpsertResult,
+  type CodeChunkBatchDeleteResult,
+  type CodeChunkDeleteResult,
   type EnsureCollectionResult,
   type VectorStoreConfig,
 } from "@codebase-explainer/vector-store";
@@ -40,6 +46,10 @@ import {
   type IndexingPersistence,
   type PersistedFileSummary,
 } from "../persistence/indexing-persistence.js";
+import {
+  createIncrementalIndexingPlan,
+  summarizeIncrementalIndexingPlan,
+} from "../services/incremental-indexing-planner.js";
 import {
   GitHubInstallationTokenProvider,
   InstallationTokenError,
@@ -75,6 +85,16 @@ export interface RepositoryChunkerContract {
   ): Promise<RepositoryChunkingResult>;
 }
 
+export interface RepositoryFileHasherContract {
+  hashFiles(
+    files: readonly FilteredRepositoryFiles["files"][number][],
+    options: {
+      maxFileBytes: number;
+      signal?: AbortSignal;
+    },
+  ): Promise<HashedRepositoryFile[]>;
+}
+
 export interface CodeChunkEmbedderContract {
   embedChunks(
     chunks: RepositoryChunkingResult["chunks"],
@@ -91,12 +111,25 @@ export interface CodeChunkStoreContract {
     items: CodeChunkEmbeddingResult["items"],
     options?: Parameters<QdrantCodeChunkStore["upsert"]>[1],
   ): Promise<CodeChunkUpsertResult>;
+  deleteRepositoryChunks(
+    selector: Parameters<QdrantCodeChunkStore["deleteRepositoryChunks"]>[0],
+    options?: Parameters<QdrantCodeChunkStore["deleteRepositoryChunks"]>[1],
+  ): Promise<CodeChunkDeleteResult>;
+  deleteFileChunks(
+    selector: Parameters<QdrantCodeChunkStore["deleteFileChunks"]>[0],
+    options?: Parameters<QdrantCodeChunkStore["deleteFileChunks"]>[1],
+  ): Promise<CodeChunkBatchDeleteResult>;
+  promoteRepositoryCommit(
+    input: Parameters<QdrantCodeChunkStore["promoteRepositoryCommit"]>[0],
+    options?: Parameters<QdrantCodeChunkStore["promoteRepositoryCommit"]>[1],
+  ): Promise<CodeChunkDeleteResult>;
 }
 
 export type RepositoryIndexingProcessorDependencies = {
   persistence: IndexingPersistence;
   cloner: RepositoryClonerContract;
   filter: RepositoryFilterContract;
+  hasher: RepositoryFileHasherContract;
   chunker: RepositoryChunkerContract;
   embedder: CodeChunkEmbedderContract;
   vectorCollection: VectorCollectionContract;
@@ -185,6 +218,8 @@ function isLimitError(error: unknown): boolean {
     (error instanceof RepositoryScanError &&
       (error.code === "MAX_ENTRIES_EXCEEDED" ||
         error.code === "MAX_DEPTH_EXCEEDED")) ||
+    (error instanceof RepositoryFileHashError &&
+      error.code === "FILE_TOO_LARGE") ||
     (error instanceof RepositoryChunkingError && error.code.startsWith("MAX_"))
   );
 }
@@ -258,6 +293,7 @@ function normalizeIndexingError(
 
   if (
     error instanceof RepositoryFileFilterError ||
+    error instanceof RepositoryFileHashError ||
     error instanceof RepositoryScanError ||
     error instanceof RepositoryChunkingError
   ) {
@@ -277,15 +313,7 @@ function normalizeIndexingError(
   );
 }
 
-function buildLanguageCounts(
-  files: readonly PersistedFileSummary[],
-): ReadonlyMap<string, number> {
-  const counts = new Map<string, number>();
-  for (const file of files) {
-    counts.set(file.language, (counts.get(file.language) ?? 0) + 1);
-  }
-  return counts;
-}
+const maximumCoalescedIndexingCycles = 3;
 
 function validateRepository(
   repository: IndexableRepository | null,
@@ -350,128 +378,66 @@ export class RepositoryIndexingProcessor {
     signal?: AbortSignal,
   ): Promise<RepositoryIndexingJobResult> {
     assertNotCancelled(signal);
-    const repository = validateRepository(
+    let repository = validateRepository(
       await this.dependencies.persistence.findRepository(data.repositoryId),
       data,
     );
+    let filesIndexed = 0;
+    let chunksIndexed = 0;
+    let embeddingTokens = 0;
 
     try {
-      await this.reportProgress(job, data, progressStages.cloning, true);
-      const accessToken = await this.privateRepositoryAccessToken(repository);
-
-      return await this.dependencies.cloner.withClone(
-        {
-          repositoryUrl: data.repositoryUrl,
-          ...(data.branch === undefined ? {} : { branch: data.branch }),
-          ...(accessToken === undefined ? {} : { accessToken }),
-          ...(signal === undefined ? {} : { signal }),
-        },
-        async (clonedRepository) => {
-          if (
-            clonedRepository.fullName.toLowerCase() !==
-            repository.fullName.toLowerCase()
-          ) {
-            throw new RepositoryIndexingError(
-              "REPOSITORY_MISMATCH",
-              "Cloned repository does not match the persisted repository",
-              false,
-            );
-          }
-
-          await this.reportProgress(job, data, progressStages.scanning);
-          const filtered = await this.dependencies.filter.filter(
-            clonedRepository.directory,
-            {
-              maxFiles: this.limits.maxFiles,
-              maxTotalBytes: this.limits.maxTotalBytes,
-              maxFileBytes: this.limits.maxFileBytes,
-              scanOptions: {
-                fileSystemErrors: "skip",
-                ...(signal === undefined ? {} : { signal }),
-              },
-            },
+      for (
+        let cycleIndex = 0;
+        cycleIndex < maximumCoalescedIndexingCycles;
+        cycleIndex += 1
+      ) {
+        if (cycleIndex > 0) {
+          repository = validateRepository(
+            await this.dependencies.persistence.findRepository(
+              data.repositoryId,
+            ),
+            data,
           );
+        }
+        const cycle = await this.processCycle(
+          job,
+          data,
+          repository,
+          signal,
+        );
+        filesIndexed += cycle.result.filesIndexed;
+        chunksIndexed += cycle.result.chunksIndexed;
+        embeddingTokens += cycle.result.embeddingTokens;
 
-          await this.reportProgress(job, data, progressStages.chunking);
-          const chunked = await this.dependencies.chunker.chunkFiles(
-            filtered.files,
-            {
-              userId: data.userId,
-              repositoryId: data.repositoryId,
-              branch: clonedRepository.branch,
-              commitSha: clonedRepository.commitSha,
-            },
-            signal === undefined ? {} : { signal },
-          );
-
-          await this.reportProgress(job, data, progressStages.embedding);
-          const embedded = await this.dependencies.embedder.embedChunks(
-            chunked.chunks,
-            {
-              repositoryLabel: clonedRepository.fullName,
-              endUserId: data.userId,
-              ...(signal === undefined ? {} : { signal }),
-            },
-          );
-
-          await this.reportProgress(job, data, progressStages.indexing);
-          await this.dependencies.vectorCollection.ensureCollection();
-          await this.dependencies.chunkStore.upsert(
-            embedded.items,
-            signal === undefined ? {} : { signal, wait: true },
-          );
-          assertNotCancelled(signal);
-          if (
-            await this.dependencies.persistence.isCancellationRequested(job.id)
-          ) {
-            throw new RepositoryIndexingError(
-              "INDEXING_CANCELLED",
-              "Repository indexing was cancelled",
-              false,
-            );
-          }
-
-          const fileSummaries = chunked.fileSummaries.map((file) => ({
-            filePath: file.filePath,
-            language: file.language,
-            contentHash: file.contentHash,
-            sourceBytes: file.sourceBytes,
-            imports: file.imports,
-            exports: file.exports,
-            symbols: file.symbols,
-          }));
-          await this.dependencies.persistence.complete({
-            bullJobId: job.id,
-            repositoryId: data.repositoryId,
-            userId: data.userId,
-            branch: clonedRepository.branch,
-            commitSha: clonedRepository.commitSha,
-            files: fileSummaries,
-            chunks: embedded.items.length,
-            languages: buildLanguageCounts(fileSummaries),
-          });
-
-          const result: RepositoryIndexingJobResult = {
-            repositoryId: data.repositoryId,
-            branch: clonedRepository.branch,
-            commitSha: clonedRepository.commitSha,
-            filesIndexed: fileSummaries.length,
-            chunksIndexed: embedded.items.length,
-            embeddingModel: embedded.model,
-            embeddingTokens: embedded.usage.totalTokens,
-          };
+        if (!cycle.superseded) {
           await job.updateProgress({
             percentage: 100,
             step: "completed",
             message: "Repository indexing completed",
           });
-          return result;
-        },
+          return {
+            ...cycle.result,
+            filesIndexed,
+            chunksIndexed,
+            embeddingTokens,
+          };
+        }
+      }
+
+      throw new RepositoryIndexingError(
+        "INDEXING_DEPENDENCY_FAILED",
+        "New repository updates are waiting to be indexed",
+        true,
       );
     } catch (error) {
       const normalized = normalizeIndexingError(error, signal);
 
-      if (error instanceof RepositoryAccessRevokedError) {
+      if (
+        error instanceof RepositoryAccessRevokedError ||
+        (normalized.code === "REPOSITORY_ACCESS_DENIED" &&
+          repository.githubAccessRevokedAt !== undefined)
+      ) {
         throw normalized;
       }
 
@@ -497,6 +463,14 @@ export class RepositoryIndexingProcessor {
           });
         }
       } catch (persistenceError) {
+        if (persistenceError instanceof RepositoryAccessRevokedError) {
+          throw new RepositoryIndexingError(
+            "REPOSITORY_ACCESS_DENIED",
+            "GitHub repository access has been revoked",
+            false,
+            { cause: persistenceError },
+          );
+        }
         throw new RepositoryIndexingError(
           "INDEXING_DEPENDENCY_FAILED",
           "Repository indexing failed and its status could not be persisted",
@@ -507,6 +481,195 @@ export class RepositoryIndexingProcessor {
 
       throw normalized;
     }
+  }
+
+  private async processCycle(
+    job: IndexingJobContract,
+    data: RepositoryIndexingJobData,
+    repository: IndexableRepository,
+    signal: AbortSignal | undefined,
+  ): Promise<{
+    result: RepositoryIndexingJobResult;
+    superseded: boolean;
+  }> {
+    const expectedPendingCommit = repository.pendingIndexCommit;
+    await this.reportProgress(job, data, progressStages.cloning, true);
+    const accessToken = await this.privateRepositoryAccessToken(repository);
+
+    return this.dependencies.cloner.withClone(
+      {
+        repositoryUrl: data.repositoryUrl,
+        ...(data.branch === undefined ? {} : { branch: data.branch }),
+        ...(accessToken === undefined ? {} : { accessToken }),
+        ...(signal === undefined ? {} : { signal }),
+      },
+      async (clonedRepository) => {
+        if (
+          clonedRepository.fullName.toLowerCase() !==
+          repository.fullName.toLowerCase()
+        ) {
+          throw new RepositoryIndexingError(
+            "REPOSITORY_MISMATCH",
+            "Cloned repository does not match the persisted repository",
+            false,
+          );
+        }
+
+        await this.reportProgress(job, data, progressStages.scanning);
+        const filtered = await this.dependencies.filter.filter(
+          clonedRepository.directory,
+          {
+            maxFiles: this.limits.maxFiles,
+            maxTotalBytes: this.limits.maxTotalBytes,
+            maxFileBytes: this.limits.maxFileBytes,
+            scanOptions: {
+              fileSystemErrors: "skip",
+              ...(signal === undefined ? {} : { signal }),
+            },
+          },
+        );
+        const [hashedFiles, persistedFiles] = await Promise.all([
+          this.dependencies.hasher.hashFiles(filtered.files, {
+            maxFileBytes: this.limits.maxFileBytes,
+            ...(signal === undefined ? {} : { signal }),
+          }),
+          this.dependencies.persistence.findRepositoryFiles(
+            data.repositoryId,
+            clonedRepository.branch,
+          ),
+        ]);
+        const plan = createIncrementalIndexingPlan({
+          lastIndexedCommit: repository.lastIndexedCommit,
+          currentFiles: hashedFiles,
+          persistedFiles,
+        });
+
+        await this.reportProgress(job, data, progressStages.chunking);
+        const chunked = await this.dependencies.chunker.chunkFiles(
+          plan.changedFiles,
+          {
+            userId: data.userId,
+            repositoryId: data.repositoryId,
+            branch: clonedRepository.branch,
+            commitSha: clonedRepository.commitSha,
+          },
+          signal === undefined ? {} : { signal },
+        );
+
+        const fileSummaries: PersistedFileSummary[] =
+          chunked.fileSummaries.map((file) => ({
+            filePath: file.filePath,
+            language: file.language,
+            contentHash: file.contentHash,
+            sourceBytes: file.sourceBytes,
+            chunkCount: file.chunkCount,
+            imports: file.imports,
+            exports: file.exports,
+            symbols: file.symbols,
+          }));
+        const stats = summarizeIncrementalIndexingPlan(plan, fileSummaries);
+        if (stats.totalChunks > defaultMaxRepositoryChunks) {
+          throw new RepositoryIndexingError(
+            "REPOSITORY_LIMIT_EXCEEDED",
+            `Repository would contain more than ${defaultMaxRepositoryChunks} chunks`,
+            false,
+          );
+        }
+
+        await this.reportProgress(job, data, progressStages.embedding);
+        const embedded = await this.dependencies.embedder.embedChunks(
+          chunked.chunks,
+          {
+            repositoryLabel: clonedRepository.fullName,
+            endUserId: data.userId,
+            ...(signal === undefined ? {} : { signal }),
+          },
+        );
+
+        await this.reportProgress(job, data, progressStages.indexing);
+        await this.dependencies.vectorCollection.ensureCollection();
+        const vectorOptions =
+          signal === undefined ? { wait: true } : { signal, wait: true };
+        if (plan.mode === "full") {
+          await this.dependencies.chunkStore.deleteRepositoryChunks(
+            {
+              userId: data.userId,
+              repositoryId: data.repositoryId,
+              branch: clonedRepository.branch,
+            },
+            vectorOptions,
+          );
+        } else {
+          await this.dependencies.chunkStore.deleteFileChunks(
+            {
+              userId: data.userId,
+              repositoryId: data.repositoryId,
+              branch: clonedRepository.branch,
+              filePaths: [
+                ...plan.changedFiles.map((file) => file.relativePath),
+                ...plan.removedFilePaths,
+              ],
+            },
+            vectorOptions,
+          );
+        }
+        await this.dependencies.chunkStore.upsert(
+          embedded.items,
+          vectorOptions,
+        );
+        if (plan.mode === "incremental") {
+          await this.dependencies.chunkStore.promoteRepositoryCommit(
+            {
+              userId: data.userId,
+              repositoryId: data.repositoryId,
+              branch: clonedRepository.branch,
+              toCommitSha: clonedRepository.commitSha,
+            },
+            vectorOptions,
+          );
+        }
+        assertNotCancelled(signal);
+        if (
+          await this.dependencies.persistence.isCancellationRequested(job.id)
+        ) {
+          throw new RepositoryIndexingError(
+            "INDEXING_CANCELLED",
+            "Repository indexing was cancelled",
+            false,
+          );
+        }
+
+        const completion = await this.dependencies.persistence.complete({
+          bullJobId: job.id,
+          repositoryId: data.repositoryId,
+          userId: data.userId,
+          branch: clonedRepository.branch,
+          commitSha: clonedRepository.commitSha,
+          files: fileSummaries,
+          retainedFilePaths: plan.retainedFiles.map((file) => file.filePath),
+          removedFilePaths: plan.removedFilePaths,
+          ...(expectedPendingCommit === undefined
+            ? {}
+            : { expectedPendingCommit }),
+          totalFiles: stats.totalFiles,
+          totalChunks: stats.totalChunks,
+          languages: stats.languages,
+        });
+
+        return {
+          result: {
+            repositoryId: data.repositoryId,
+            branch: clonedRepository.branch,
+            commitSha: clonedRepository.commitSha,
+            filesIndexed: fileSummaries.length,
+            chunksIndexed: embedded.items.length,
+            embeddingModel: embedded.model,
+            embeddingTokens: embedded.usage.totalTokens,
+          },
+          superseded: completion.superseded,
+        };
+      },
+    );
   }
 
   private async reportProgress(
@@ -598,6 +761,7 @@ export function createDefaultRepositoryIndexingProcessor(
           : { tempRoot: environment.TEMP_REPOSITORY_DIR }),
       }),
       filter: new RepositoryFileFilter(),
+      hasher: new RepositoryFileHasher(),
       chunker: new RepositoryTreeSitterChunker(),
       embedder: createOpenAICodeChunkEmbeddingServiceFromEnv(process.env),
       vectorCollection,
