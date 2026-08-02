@@ -5,7 +5,9 @@ import {
   SymbolModel,
   type RepositoryStatus,
 } from "@codebase-explainer/database";
-import { Types, trusted } from "mongoose";
+import mongoose, { type Types as MongooseTypes } from "mongoose";
+
+const { Types, trusted } = mongoose;
 
 export type IndexableRepository = {
   id: string;
@@ -117,7 +119,7 @@ export class RepositoryAccessRevokedError extends Error {
   }
 }
 
-function objectId(value: string): Types.ObjectId {
+function objectId(value: string): MongooseTypes.ObjectId {
   if (!/^[0-9a-f]{24}$/u.test(value)) {
     throw new Error("Repository identifier is invalid");
   }

@@ -7,6 +7,24 @@ const optionalTrimmedString = z
   .optional()
   .transform((value) => value?.trim() || undefined);
 
+function usesSecureMongoTransport(value: string): boolean {
+  if (value.toLowerCase().startsWith("mongodb+srv://")) {
+    return true;
+  }
+  if (!value.toLowerCase().startsWith("mongodb://")) {
+    return false;
+  }
+  const query = value.split("?", 2)[1];
+  if (query === undefined) {
+    return false;
+  }
+  const parameters = new URLSearchParams(query);
+  return (
+    parameters.get("tls")?.toLowerCase() === "true" ||
+    parameters.get("ssl")?.toLowerCase() === "true"
+  );
+}
+
 const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -27,6 +45,7 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => value?.trim() || undefined),
+  OPENAI_API_KEY: optionalTrimmedString,
   QDRANT_COLLECTION: z.string().min(1).default("code_chunks"),
   QDRANT_VECTOR_SIZE: z.coerce.number().int().positive().default(1_536),
   QDRANT_REQUEST_TIMEOUT_MS: z.coerce
@@ -97,83 +116,106 @@ const envSchema = z.object({
   ENCRYPTION_KEY: optionalTrimmedString,
 });
 
-const result = envSchema.safeParse(process.env);
+export type ApiEnvironment = z.infer<typeof envSchema>;
 
-if (!result.success) {
-  throw new Error(`Invalid API environment:\n${z.prettifyError(result.error)}`);
-}
+export function parseApiEnvironment(
+  environment: NodeJS.ProcessEnv,
+): ApiEnvironment {
+  const result = envSchema.safeParse(environment);
 
-const parsedEnvironment = result.data;
-
-if (
-  parsedEnvironment.NODE_ENV === "production" &&
-  !parsedEnvironment.REDIS_URL.startsWith("rediss://")
-) {
-  throw new Error("REDIS_URL must use TLS (rediss://) in production");
-}
-
-const githubRequiredValues = [
-  parsedEnvironment.GITHUB_APP_ID,
-  parsedEnvironment.GITHUB_CLIENT_ID,
-  parsedEnvironment.GITHUB_CLIENT_SECRET,
-  parsedEnvironment.GITHUB_PRIVATE_KEY,
-  parsedEnvironment.JWT_SECRET,
-  parsedEnvironment.ENCRYPTION_KEY,
-];
-const configuredGitHubValues = githubRequiredValues.filter(Boolean).length;
-
-if (
-  configuredGitHubValues !== 0 &&
-  configuredGitHubValues !== githubRequiredValues.length
-) {
-  throw new Error(
-    "GitHub authentication requires GITHUB_APP_ID, GITHUB_CLIENT_ID, " +
-      "GITHUB_CLIENT_SECRET, GITHUB_PRIVATE_KEY, JWT_SECRET, and ENCRYPTION_KEY",
-  );
-}
-
-if (configuredGitHubValues === githubRequiredValues.length) {
-  if (!/^\d+$/u.test(parsedEnvironment.GITHUB_APP_ID as string)) {
-    throw new Error("GITHUB_APP_ID must contain only digits");
+  if (!result.success) {
+    throw new Error(`Invalid API environment:\n${z.prettifyError(result.error)}`);
   }
-  if ((parsedEnvironment.JWT_SECRET?.length ?? 0) < 32) {
-    throw new Error("JWT_SECRET must contain at least 32 characters");
-  }
-  const encryptionKey = Buffer.from(
-    parsedEnvironment.ENCRYPTION_KEY as string,
-    "base64",
-  );
+
+  const parsed = result.data;
+  const githubRequiredValues = [
+    parsed.GITHUB_APP_ID,
+    parsed.GITHUB_CLIENT_ID,
+    parsed.GITHUB_CLIENT_SECRET,
+    parsed.GITHUB_PRIVATE_KEY,
+    parsed.JWT_SECRET,
+    parsed.ENCRYPTION_KEY,
+  ];
+  const configuredGitHubValues = githubRequiredValues.filter(Boolean).length;
+
   if (
-    encryptionKey.length !== 32 ||
-    encryptionKey.toString("base64") !== parsedEnvironment.ENCRYPTION_KEY
+    configuredGitHubValues !== 0 &&
+    configuredGitHubValues !== githubRequiredValues.length
   ) {
-    throw new Error("ENCRYPTION_KEY must be a base64-encoded 32-byte key");
+    throw new Error(
+      "GitHub authentication requires GITHUB_APP_ID, GITHUB_CLIENT_ID, " +
+        "GITHUB_CLIENT_SECRET, GITHUB_PRIVATE_KEY, JWT_SECRET, and ENCRYPTION_KEY",
+    );
   }
+
+  if (configuredGitHubValues === githubRequiredValues.length) {
+    if (!/^\d+$/u.test(parsed.GITHUB_APP_ID as string)) {
+      throw new Error("GITHUB_APP_ID must contain only digits");
+    }
+    if ((parsed.JWT_SECRET?.length ?? 0) < 32) {
+      throw new Error("JWT_SECRET must contain at least 32 characters");
+    }
+    const encryptionKey = Buffer.from(
+      parsed.ENCRYPTION_KEY as string,
+      "base64",
+    );
+    if (
+      encryptionKey.length !== 32 ||
+      encryptionKey.toString("base64") !== parsed.ENCRYPTION_KEY
+    ) {
+      throw new Error("ENCRYPTION_KEY must be a base64-encoded 32-byte key");
+    }
+  }
+
+  if (
+    parsed.GITHUB_WEBHOOK_SECRET !== undefined &&
+    parsed.GITHUB_WEBHOOK_SECRET.length < 32
+  ) {
+    throw new Error("GITHUB_WEBHOOK_SECRET must contain at least 32 characters");
+  }
+
+  if (parsed.NODE_ENV === "production") {
+    if (!parsed.REDIS_URL.startsWith("rediss://")) {
+      throw new Error("REDIS_URL must use TLS (rediss://) in production");
+    }
+    if (!usesSecureMongoTransport(parsed.MONGODB_URI)) {
+      throw new Error("MONGODB_URI must use TLS in production");
+    }
+    if (!parsed.QDRANT_URL.startsWith("https://")) {
+      throw new Error("QDRANT_URL must use HTTPS in production");
+    }
+    if (!parsed.QDRANT_API_KEY) {
+      throw new Error("QDRANT_API_KEY must be configured in production");
+    }
+    if (!parsed.OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY must be configured in production");
+    }
+    if (configuredGitHubValues !== githubRequiredValues.length) {
+      throw new Error("GitHub authentication must be configured in production");
+    }
+    if (!parsed.FRONTEND_URL.startsWith("https://")) {
+      throw new Error("FRONTEND_URL must use HTTPS in production");
+    }
+    if (!parsed.GITHUB_CALLBACK_URL.startsWith("https://")) {
+      throw new Error("GITHUB_CALLBACK_URL must use HTTPS in production");
+    }
+    if (!parsed.GITHUB_WEBHOOK_SECRET) {
+      throw new Error("GITHUB_WEBHOOK_SECRET must be configured in production");
+    }
+  }
+
+  return parsed;
 }
 
-if (
-  parsedEnvironment.GITHUB_WEBHOOK_SECRET !== undefined &&
-  parsedEnvironment.GITHUB_WEBHOOK_SECRET.length < 32
-) {
-  throw new Error("GITHUB_WEBHOOK_SECRET must contain at least 32 characters");
-}
-
-if (parsedEnvironment.NODE_ENV === "production") {
-  if (configuredGitHubValues !== githubRequiredValues.length) {
-    throw new Error("GitHub authentication must be configured in production");
-  }
-  if (!parsedEnvironment.FRONTEND_URL.startsWith("https://")) {
-    throw new Error("FRONTEND_URL must use HTTPS in production");
-  }
-  if (!parsedEnvironment.GITHUB_CALLBACK_URL.startsWith("https://")) {
-    throw new Error("GITHUB_CALLBACK_URL must use HTTPS in production");
-  }
-  if (!parsedEnvironment.GITHUB_WEBHOOK_SECRET) {
-    throw new Error("GITHUB_WEBHOOK_SECRET must be configured in production");
-  }
-}
-
-export const env = parsedEnvironment;
+export const env = parseApiEnvironment(process.env);
+const configuredGitHubValues = [
+  env.GITHUB_APP_ID,
+  env.GITHUB_CLIENT_ID,
+  env.GITHUB_CLIENT_SECRET,
+  env.GITHUB_PRIVATE_KEY,
+  env.JWT_SECRET,
+  env.ENCRYPTION_KEY,
+].filter(Boolean).length;
 
 export type GitHubAuthenticationConfiguration = {
   appId: string;
@@ -199,19 +241,19 @@ export function getGitHubAuthenticationConfiguration():
   }
 
   return {
-    appId: parsedEnvironment.GITHUB_APP_ID as string,
-    clientId: parsedEnvironment.GITHUB_CLIENT_ID as string,
-    clientSecret: parsedEnvironment.GITHUB_CLIENT_SECRET as string,
-    privateKey: parsedEnvironment.GITHUB_PRIVATE_KEY as string,
-    callbackUrl: parsedEnvironment.GITHUB_CALLBACK_URL,
-    sessionSecret: parsedEnvironment.JWT_SECRET as string,
-    sessionTtlSeconds: parsedEnvironment.JWT_EXPIRES_IN_SECONDS,
-    sessionCookieName: parsedEnvironment.COOKIE_NAME,
-    oauthStateCookieName: parsedEnvironment.OAUTH_STATE_COOKIE_NAME,
-    oauthStateTtlSeconds: parsedEnvironment.OAUTH_STATE_TTL_SECONDS,
-    encryptionKey: parsedEnvironment.ENCRYPTION_KEY as string,
-    secureCookies: parsedEnvironment.NODE_ENV === "production",
-    frontendUrl: parsedEnvironment.FRONTEND_URL,
+    appId: env.GITHUB_APP_ID as string,
+    clientId: env.GITHUB_CLIENT_ID as string,
+    clientSecret: env.GITHUB_CLIENT_SECRET as string,
+    privateKey: env.GITHUB_PRIVATE_KEY as string,
+    callbackUrl: env.GITHUB_CALLBACK_URL,
+    sessionSecret: env.JWT_SECRET as string,
+    sessionTtlSeconds: env.JWT_EXPIRES_IN_SECONDS,
+    sessionCookieName: env.COOKIE_NAME,
+    oauthStateCookieName: env.OAUTH_STATE_COOKIE_NAME,
+    oauthStateTtlSeconds: env.OAUTH_STATE_TTL_SECONDS,
+    encryptionKey: env.ENCRYPTION_KEY as string,
+    secureCookies: env.NODE_ENV === "production",
+    frontendUrl: env.FRONTEND_URL,
   };
 }
 
@@ -224,12 +266,12 @@ export type GitHubWebhookConfiguration = {
 export function getGitHubWebhookConfiguration():
   | GitHubWebhookConfiguration
   | undefined {
-  if (!parsedEnvironment.GITHUB_WEBHOOK_SECRET) {
+  if (!env.GITHUB_WEBHOOK_SECRET) {
     return undefined;
   }
   return {
-    secret: parsedEnvironment.GITHUB_WEBHOOK_SECRET,
-    bodyLimit: parsedEnvironment.GITHUB_WEBHOOK_BODY_LIMIT,
-    enqueueTimeoutMs: parsedEnvironment.GITHUB_WEBHOOK_ENQUEUE_TIMEOUT_MS,
+    secret: env.GITHUB_WEBHOOK_SECRET,
+    bodyLimit: env.GITHUB_WEBHOOK_BODY_LIMIT,
+    enqueueTimeoutMs: env.GITHUB_WEBHOOK_ENQUEUE_TIMEOUT_MS,
   };
 }

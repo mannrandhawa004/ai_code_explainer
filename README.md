@@ -50,9 +50,16 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 19. Add incremental indexing
 - [x] 20. Add evaluations
 
+## Production readiness
+
+- [x] P1. Containerize and harden the API and worker
+- [ ] P2. Add production observability and operational metrics
+- [ ] P3. Add CI release, image scanning, and deployment automation
+- [ ] P4. Run staging load, failure-recovery, and live evaluation gates
+
 ## Current state
 
-Step 20 adds a versioned, repository-specific evaluation suite with file/symbol/line retrieval metrics, citation correctness and grounding, deterministic completeness and hallucination proxies, latency percentiles, configurable token cost, bounded live-adapter execution, reproducible recorded-observation scoring, and CI quality gates. The baseline dataset is pinned to the Step 19 commit so line expectations cannot drift silently. See the [evaluation guide](packages/evaluation/README.md).
+Production step P1 adds separate multi-stage API and worker container targets, non-root Tini runtimes, an API health check, worker-only Git, a hardened local application Compose profile, and fail-fast production TLS/provider validation. See the [deployment guide](docs/deployment.md).
 
 ## Prerequisites
 
@@ -63,4 +70,4 @@ Step 20 adds a versioned, repository-specific evaluation suite with file/symbol/
 
 Copy `.env.example` to `.env` when configuration is introduced. Never commit `.env` or credentials.
 
-Start local infrastructure with `docker compose up -d`, then run the API and worker in separate terminals with `npm run dev --workspace @codebase-explainer/api` and `npm run dev --workspace @codebase-explainer/worker`. The Redis container is for local development; production should use a managed Redis service over `rediss://`.
+Start local infrastructure with `docker compose up -d`, then run the API and worker in separate terminals with `npm run dev --workspace @codebase-explainer/api` and `npm run dev --workspace @codebase-explainer/worker`. To run both backend processes in containers, use `docker compose --profile application up --build`. The Compose databases are for local development only; production uses managed TLS services.

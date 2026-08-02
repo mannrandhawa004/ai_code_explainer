@@ -24,6 +24,8 @@ npm run test --workspace @codebase-explainer/worker
 npm run build --workspace @codebase-explainer/worker
 ```
 
-Local development requires MongoDB, Qdrant, and Redis from `docker compose up -d`, plus `OPENAI_API_KEY`. Private indexing and push-webhook processing additionally require `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY`. `INDEXING_CONCURRENCY` is bounded to 1-32 and `GITHUB_WEBHOOK_CONCURRENCY` to 1-8. Production requires `REDIS_URL` to use `rediss://` and requires the GitHub App credentials.
+Build the production worker image with `npm run containers:build:worker`. Git exists only in this image, the process runs as a non-root user under Tini, and clone data belongs on ephemeral storage such as `/tmp/codebase-explainer`. See the [deployment guide](../../docs/deployment.md).
+
+Local development requires MongoDB, Qdrant, and Redis from `docker compose up -d`, plus `OPENAI_API_KEY`. Private indexing and push-webhook processing additionally require `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY`. `INDEXING_CONCURRENCY` is bounded to 1-32 and `GITHUB_WEBHOOK_CONCURRENCY` to 1-8. Production requires TLS-managed MongoDB and Redis, HTTPS Qdrant with an API key, OpenAI credentials, and the GitHub App credentials.
 
 On `SIGINT` or `SIGTERM`, the worker stops taking new jobs, waits for active jobs to finish, closes Redis, and disconnects MongoDB. `WORKER_SHUTDOWN_TIMEOUT_MS` controls the forced-shutdown safety limit.

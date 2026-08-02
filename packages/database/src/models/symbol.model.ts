@@ -1,11 +1,10 @@
-import {
-  Schema,
-  model,
-  models,
+import mongoose, {
   type HydratedDocument,
   type Model,
   type Types,
 } from "mongoose";
+
+const { Schema, model, models } = mongoose;
 
 export interface SymbolRecord {
   repositoryId: Types.ObjectId;

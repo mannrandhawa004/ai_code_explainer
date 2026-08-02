@@ -20,7 +20,15 @@ describe("TokenCipher", () => {
   it("rejects tampered ciphertext", () => {
     const cipher = new TokenCipher(randomBytes(32).toString("base64"));
     const encrypted = cipher.encrypt("token");
-    const tampered = `${encrypted.slice(0, -1)}${encrypted.endsWith("A") ? "B" : "A"}`;
+    const components = encrypted.split(":");
+    const encodedCiphertext = components[3];
+    if (!encodedCiphertext) {
+      throw new Error("Encrypted test token did not contain ciphertext");
+    }
+    const ciphertext = Buffer.from(encodedCiphertext, "base64url");
+    ciphertext.writeUInt8(ciphertext.readUInt8(0) ^ 1, 0);
+    components[3] = ciphertext.toString("base64url");
+    const tampered = components.join(":");
 
     expect(() => cipher.decrypt(tampered)).toThrowError(TokenCipherError);
   });

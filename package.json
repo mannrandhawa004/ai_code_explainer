@@ -13,7 +13,11 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "evaluate": "npm run evaluate --workspace @codebase-explainer/evaluation --"
+    "verify:backend-runtime": "node scripts/verify-built-backend.mjs",
+    "evaluate": "npm run evaluate --workspace @codebase-explainer/evaluation --",
+    "containers:config": "docker compose --profile application config --quiet",
+    "containers:build:api": "docker build --file docker/backend.Dockerfile --target api --tag ai-codebase-explainer-api:local .",
+    "containers:build:worker": "docker build --file docker/backend.Dockerfile --target worker --tag ai-codebase-explainer-worker:local ."
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
