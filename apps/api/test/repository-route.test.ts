@@ -20,6 +20,7 @@ const queuedResult = {
 function createService(): RepositoryImportServiceContract {
   return {
     importPublic: vi.fn().mockResolvedValue(queuedResult),
+    importGitHub: vi.fn().mockResolvedValue(queuedResult),
     enqueueExisting: vi.fn().mockResolvedValue(queuedResult),
     getStatus: vi.fn().mockResolvedValue({
       repositoryId,

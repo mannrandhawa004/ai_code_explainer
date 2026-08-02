@@ -39,6 +39,11 @@ import {
   type IndexingPersistence,
   type PersistedFileSummary,
 } from "../persistence/indexing-persistence.js";
+import {
+  GitHubInstallationTokenProvider,
+  InstallationTokenError,
+  type InstallationTokenProviderContract,
+} from "../services/github-installation-token.service.js";
 
 export type IndexingJobContract = {
   id: string;
@@ -95,6 +100,7 @@ export type RepositoryIndexingProcessorDependencies = {
   embedder: CodeChunkEmbedderContract;
   vectorCollection: VectorCollectionContract;
   chunkStore: CodeChunkStoreContract;
+  installationTokenProvider?: InstallationTokenProviderContract;
 };
 
 export type RepositoryIndexingLimits = {
@@ -107,7 +113,7 @@ export type RepositoryIndexingErrorCode =
   | "INVALID_JOB"
   | "REPOSITORY_NOT_FOUND"
   | "REPOSITORY_ACCESS_DENIED"
-  | "PRIVATE_REPOSITORY_UNSUPPORTED"
+  | "PRIVATE_REPOSITORY_ACCESS_DENIED"
   | "REPOSITORY_MISMATCH"
   | "INDEXING_CANCELLED"
   | "REPOSITORY_LIMIT_EXCEEDED"
@@ -229,6 +235,17 @@ function normalizeIndexingError(
     );
   }
 
+  if (error instanceof InstallationTokenError) {
+    return new RepositoryIndexingError(
+      error.code === "ACCESS_DENIED"
+        ? "PRIVATE_REPOSITORY_ACCESS_DENIED"
+        : "INDEXING_DEPENDENCY_FAILED",
+      error.message,
+      error.code === "GITHUB_UNAVAILABLE",
+      { cause: error },
+    );
+  }
+
   if (
     error instanceof RepositoryFileFilterError ||
     error instanceof RepositoryScanError ||
@@ -280,14 +297,6 @@ function validateRepository(
     );
   }
 
-  if (repository.private) {
-    throw new RepositoryIndexingError(
-      "PRIVATE_REPOSITORY_UNSUPPORTED",
-      "Private repositories are not supported in the public MVP",
-      false,
-    );
-  }
-
   let fullName: string;
   try {
     fullName = normalizePublicGitHubRepository(data.repositoryUrl).fullName;
@@ -330,11 +339,13 @@ export class RepositoryIndexingProcessor {
 
     try {
       await this.reportProgress(job, data, progressStages.cloning, true);
+      const accessToken = await this.privateRepositoryAccessToken(repository);
 
       return await this.dependencies.cloner.withClone(
         {
           repositoryUrl: data.repositoryUrl,
           ...(data.branch === undefined ? {} : { branch: data.branch }),
+          ...(accessToken === undefined ? {} : { accessToken }),
           ...(signal === undefined ? {} : { signal }),
         },
         async (clonedRepository) => {
@@ -513,6 +524,29 @@ export class RepositoryIndexingProcessor {
     }
     await job.updateProgress(progress);
   }
+
+  private async privateRepositoryAccessToken(
+    repository: IndexableRepository,
+  ): Promise<string | undefined> {
+    if (!repository.private) {
+      return undefined;
+    }
+    if (
+      repository.installationId === undefined ||
+      repository.githubRepositoryId === undefined ||
+      !this.dependencies.installationTokenProvider
+    ) {
+      throw new RepositoryIndexingError(
+        "PRIVATE_REPOSITORY_ACCESS_DENIED",
+        "Private repository access could not be verified",
+        false,
+      );
+    }
+    return this.dependencies.installationTokenProvider.createRepositoryToken({
+      installationId: repository.installationId,
+      repositoryId: repository.githubRepositoryId,
+    });
+  }
 }
 
 function createVectorStoreConfig(
@@ -546,6 +580,14 @@ export function createDefaultRepositoryIndexingProcessor(
       embedder: createOpenAICodeChunkEmbeddingServiceFromEnv(process.env),
       vectorCollection,
       chunkStore: new QdrantCodeChunkStore(vectorConfig, vectorCollection.client),
+      ...(environment.GITHUB_APP_ID && environment.GITHUB_PRIVATE_KEY
+        ? {
+            installationTokenProvider: new GitHubInstallationTokenProvider(
+              environment.GITHUB_APP_ID,
+              environment.GITHUB_PRIVATE_KEY,
+            ),
+          }
+        : {}),
     },
     {
       maxFiles: environment.MAX_REPOSITORY_FILES,

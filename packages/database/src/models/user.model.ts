@@ -11,6 +11,10 @@ export interface User {
   username: string;
   avatarUrl: string;
   email?: string;
+  githubAccessTokenEncrypted?: string;
+  githubAccessTokenExpiresAt?: Date;
+  githubRefreshTokenEncrypted?: string;
+  githubRefreshTokenExpiresAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +25,10 @@ const userSchema = new Schema<User>(
     username: { type: String, required: true, trim: true, maxlength: 100 },
     avatarUrl: { type: String, required: true, trim: true },
     email: { type: String, trim: true, lowercase: true },
+    githubAccessTokenEncrypted: { type: String, select: false },
+    githubAccessTokenExpiresAt: { type: Date, select: false },
+    githubRefreshTokenEncrypted: { type: String, select: false },
+    githubRefreshTokenExpiresAt: { type: Date, select: false },
   },
   { timestamps: true, collection: "users" },
 );

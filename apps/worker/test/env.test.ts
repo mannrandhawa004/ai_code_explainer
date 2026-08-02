@@ -25,4 +25,10 @@ describe("worker environment", () => {
       parseWorkerEnvironment({ NODE_ENV: "test", INDEXING_CONCURRENCY: "33" }),
     ).toThrow("Invalid worker environment");
   });
+
+  it("requires both GitHub App credentials when private indexing is configured", () => {
+    expect(() =>
+      parseWorkerEnvironment({ NODE_ENV: "test", GITHUB_APP_ID: "123" }),
+    ).toThrow("GITHUB_APP_ID and GITHUB_PRIVATE_KEY");
+  });
 });

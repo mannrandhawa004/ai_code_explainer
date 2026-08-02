@@ -51,13 +51,24 @@ function toAppError(error: RepositoryImportError): AppError {
     case "REPOSITORY_NOT_FOUND":
     case "INDEXING_JOB_NOT_FOUND":
       return new AppError(404, error.code, error.message);
+    case "GITHUB_AUTHORIZATION_REQUIRED":
+      return new AppError(401, error.code, error.message);
+    case "GITHUB_ACCESS_DENIED":
+      return new AppError(403, error.code, error.message);
     case "PRIVATE_REPOSITORY_UNSUPPORTED":
     case "INDEXING_ALREADY_FINISHED":
       return new AppError(409, error.code, error.message);
     case "INDEXING_QUEUE_UNAVAILABLE":
+    case "GITHUB_SERVICE_UNAVAILABLE":
     case "PERSISTENCE_FAILED":
       return new AppError(503, error.code, error.message);
   }
+}
+
+export function repositoryImportErrorToAppError(
+  error: RepositoryImportError,
+): AppError {
+  return toAppError(error);
 }
 
 export function createRepositoryRouter(

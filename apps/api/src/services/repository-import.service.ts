@@ -15,6 +15,12 @@ import {
   getDefaultRepositoryIndexingQueue,
   type RepositoryIndexingQueueContract,
 } from "../queues/repository-indexing.queue.js";
+import {
+  GitHubRepositoryAccessError,
+  getDefaultGitHubRepositoryService,
+  type GitHubRepositoryAuthorizationContract,
+  type GitHubRepositorySummary,
+} from "./github-repository.service.js";
 
 const objectIdPattern = /^[0-9a-f]{24}$/iu;
 const inProgressRepositoryStatuses = new Set<RepositoryStatus>([
@@ -34,6 +40,14 @@ const inProgressJobStatuses: IndexingJobStatus[] = [
 export type ImportPublicRepositoryInput = {
   authenticatedUserId: string;
   repositoryUrl: string;
+  branch?: string;
+};
+
+export type ImportGitHubRepositoryInput = {
+  authenticatedUserId: string;
+  installationId: number;
+  owner: string;
+  repository: string;
   branch?: string;
 };
 
@@ -74,6 +88,9 @@ export type RepositoryImportErrorCode =
   | "INVALID_REQUEST"
   | "REPOSITORY_NOT_FOUND"
   | "PRIVATE_REPOSITORY_UNSUPPORTED"
+  | "GITHUB_AUTHORIZATION_REQUIRED"
+  | "GITHUB_ACCESS_DENIED"
+  | "GITHUB_SERVICE_UNAVAILABLE"
   | "INDEXING_QUEUE_UNAVAILABLE"
   | "INDEXING_JOB_NOT_FOUND"
   | "INDEXING_ALREADY_FINISHED"
@@ -94,6 +111,9 @@ export class RepositoryImportError extends Error {
 export interface RepositoryImportServiceContract {
   importPublic(
     input: ImportPublicRepositoryInput,
+  ): Promise<RepositoryIndexingResult>;
+  importGitHub(
+    input: ImportGitHubRepositoryInput,
   ): Promise<RepositoryIndexingResult>;
   enqueueExisting(
     authenticatedUserId: string,
@@ -136,7 +156,10 @@ function sanitizeBranch(branch: string | undefined): string | undefined {
 }
 
 export class RepositoryImportService implements RepositoryImportServiceContract {
-  constructor(private readonly queue: RepositoryIndexingQueueContract) {}
+  constructor(
+    private readonly queue: RepositoryIndexingQueueContract,
+    private readonly github?: GitHubRepositoryAuthorizationContract,
+  ) {}
 
   async importPublic(
     input: ImportPublicRepositoryInput,
@@ -226,6 +249,93 @@ export class RepositoryImportService implements RepositoryImportServiceContract 
     }
   }
 
+  async importGitHub(
+    input: ImportGitHubRepositoryInput,
+  ): Promise<RepositoryIndexingResult> {
+    const userId = toObjectId(input.authenticatedUserId, "Authenticated user ID");
+    const branch = sanitizeBranch(input.branch);
+    const authorized = await this.authorizeGitHubRepository({
+      authenticatedUserId: userId.toHexString(),
+      installationId: input.installationId,
+      owner: input.owner,
+      repository: input.repository,
+      ...(branch === undefined ? {} : { branch }),
+    });
+
+    try {
+      let repository = await RepositoryModel.findOne({
+        userId,
+        githubRepositoryId: authorized.id,
+      }).exec();
+      repository ??= await RepositoryModel.findOne({
+        userId,
+        fullName: authorized.fullName,
+      }).exec();
+
+      if (repository && inProgressRepositoryStatuses.has(repository.status)) {
+        const existingJob = await IndexingJobModel.findOne({
+          repositoryId: repository._id,
+          status: trusted({ $in: inProgressJobStatuses }),
+        })
+          .sort({ createdAt: -1 })
+          .lean()
+          .exec();
+        if (existingJob) {
+          return {
+            repositoryId: repository._id.toString(),
+            jobId: existingJob.bullJobId,
+            status: "queued",
+            deduplicated: true,
+          };
+        }
+      }
+
+      const selectedBranch = branch ?? authorized.defaultBranch;
+      if (!repository) {
+        repository = await RepositoryModel.create({
+          userId,
+          githubRepositoryId: authorized.id,
+          installationId: authorized.installationId,
+          owner: authorized.owner,
+          name: authorized.name,
+          fullName: authorized.fullName,
+          private: authorized.private,
+          selectedBranch,
+          defaultBranch: authorized.defaultBranch,
+          status: "queued",
+        });
+      } else {
+        repository.githubRepositoryId = authorized.id;
+        repository.installationId = authorized.installationId;
+        repository.owner = authorized.owner;
+        repository.name = authorized.name;
+        repository.fullName = authorized.fullName;
+        repository.private = authorized.private;
+        repository.selectedBranch = selectedBranch;
+        repository.defaultBranch = authorized.defaultBranch;
+        repository.status = "queued";
+        repository.set("errorMessage", undefined);
+        await repository.save();
+      }
+
+      return await this.enqueueRepository(
+        repository._id.toString(),
+        userId.toHexString(),
+        authorized.htmlUrl,
+        selectedBranch,
+      );
+    } catch (error) {
+      if (error instanceof RepositoryImportError) {
+        throw error;
+      }
+      throw new RepositoryImportError(
+        "PERSISTENCE_FAILED",
+        "The repository import could not be persisted",
+        { cause: error },
+      );
+    }
+  }
+
   async enqueueExisting(
     authenticatedUserId: string,
     repositoryId: string,
@@ -243,10 +353,30 @@ export class RepositoryImportService implements RepositoryImportServiceContract 
       canonicalRepositoryId,
     );
     if (repository.private) {
-      throw new RepositoryImportError(
-        "PRIVATE_REPOSITORY_UNSUPPORTED",
-        "Private repositories are not supported in the public MVP",
-      );
+      if (
+        repository.installationId === undefined ||
+        repository.githubRepositoryId === undefined
+      ) {
+        throw new RepositoryImportError(
+          "GITHUB_ACCESS_DENIED",
+          "GitHub repository access could not be verified",
+        );
+      }
+      const authorized = await this.authorizeGitHubRepository({
+        authenticatedUserId: canonicalUserId,
+        installationId: repository.installationId,
+        owner: repository.owner,
+        repository: repository.name,
+        ...(repository.selectedBranch === "HEAD"
+          ? {}
+          : { branch: repository.selectedBranch }),
+      });
+      if (authorized.id !== repository.githubRepositoryId) {
+        throw new RepositoryImportError(
+          "GITHUB_ACCESS_DENIED",
+          "GitHub repository access could not be verified",
+        );
+      }
     }
 
     if (inProgressRepositoryStatuses.has(repository.status)) {
@@ -465,13 +595,76 @@ export class RepositoryImportService implements RepositoryImportServiceContract 
     }
     return repository;
   }
+
+  private async authorizeGitHubRepository(input: {
+    authenticatedUserId: string;
+    installationId: number;
+    owner: string;
+    repository: string;
+    branch?: string;
+  }): Promise<GitHubRepositorySummary> {
+    if (!this.github) {
+      throw new RepositoryImportError(
+        "GITHUB_SERVICE_UNAVAILABLE",
+        "GitHub repository access is not configured",
+      );
+    }
+
+    try {
+      return await this.github.authorizeRepository({
+        userId: input.authenticatedUserId,
+        installationId: input.installationId,
+        owner: input.owner,
+        repository: input.repository,
+        ...(input.branch === undefined ? {} : { branch: input.branch }),
+      });
+    } catch (error) {
+      if (error instanceof GitHubRepositoryAccessError) {
+        switch (error.code) {
+          case "AUTHORIZATION_REQUIRED":
+            throw new RepositoryImportError(
+              "GITHUB_AUTHORIZATION_REQUIRED",
+              "GitHub authorization is required",
+              { cause: error },
+            );
+          case "INSTALLATION_NOT_FOUND":
+          case "REPOSITORY_NOT_FOUND":
+          case "BRANCH_NOT_FOUND":
+            throw new RepositoryImportError(
+              "GITHUB_ACCESS_DENIED",
+              "GitHub repository access could not be verified",
+              { cause: error },
+            );
+          case "GITHUB_UNAVAILABLE":
+            throw new RepositoryImportError(
+              "GITHUB_SERVICE_UNAVAILABLE",
+              "GitHub is temporarily unavailable",
+              { cause: error },
+            );
+        }
+      }
+      throw error;
+    }
+  }
 }
 
 let defaultService: RepositoryImportService | undefined;
 
 export function getDefaultRepositoryImportService(): RepositoryImportService {
-  defaultService ??= new RepositoryImportService(
+  if (defaultService) {
+    return defaultService;
+  }
+
+  let github: GitHubRepositoryAuthorizationContract | undefined;
+  try {
+    github = getDefaultGitHubRepositoryService();
+  } catch {
+    // Public imports remain available when optional local GitHub credentials
+    // are absent. Private imports still fail closed inside importGitHub().
+  }
+  defaultService = new RepositoryImportService(
     getDefaultRepositoryIndexingQueue(),
+    github,
   );
   return defaultService;
 }

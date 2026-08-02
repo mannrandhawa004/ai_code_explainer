@@ -40,6 +40,15 @@ describe("database models", () => {
     expect(repository.stats.chunks).toBe(0);
   });
 
+  it("excludes encrypted GitHub tokens from normal user queries", () => {
+    expect(UserModel.schema.path("githubAccessTokenEncrypted").options.select).toBe(
+      false,
+    );
+    expect(UserModel.schema.path("githubRefreshTokenEncrypted").options.select).toBe(
+      false,
+    );
+  });
+
   it("supports public-MVP repository records before GitHub metadata exists", async () => {
     const repository = new RepositoryModel({
       userId: new Types.ObjectId(),

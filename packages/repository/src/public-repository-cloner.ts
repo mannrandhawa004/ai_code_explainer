@@ -14,6 +14,7 @@ export type PublicGitHubRepository = {
 export type PublicRepositoryCloneRequest = {
   repositoryUrl: string;
   branch?: string;
+  accessToken?: string;
   signal?: AbortSignal;
 };
 
@@ -48,6 +49,7 @@ export type CloneCommandRunner = (
 export type RepositoryCloneErrorCode =
   | "INVALID_REPOSITORY_URL"
   | "INVALID_BRANCH"
+  | "INVALID_ACCESS_TOKEN"
   | "CLONE_ABORTED"
   | "CLONE_FAILED"
   | "METADATA_FAILED"
@@ -74,6 +76,28 @@ const defaultConfig: PublicRepositoryCloneConfig = {
 const githubOwnerPattern = /^(?!-)[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const githubRepositoryPattern = /^[A-Za-z0-9_.-]{1,100}$/;
 const forbiddenBranchCharacters = /[\u0000-\u0020\u007f~^:?*\[\\]/;
+
+function createGitConfig(accessToken: string | undefined): string {
+  if (accessToken === undefined) {
+    return "";
+  }
+  if (
+    accessToken.length === 0 ||
+    accessToken.length > 4_096 ||
+    accessToken !== accessToken.trim() ||
+    /[\u0000\r\n]/u.test(accessToken)
+  ) {
+    throw new RepositoryCloneError(
+      "INVALID_ACCESS_TOKEN",
+      "GitHub repository authentication is invalid",
+    );
+  }
+
+  const credentials = Buffer.from(`x-access-token:${accessToken}`, "utf8").toString(
+    "base64",
+  );
+  return `[http "https://github.com/"]\n\textraHeader = Authorization: Basic ${credentials}\n`;
+}
 
 function pathIsInside(parent: string, candidate: string): boolean {
   const relative = path.relative(parent, candidate);
@@ -262,6 +286,7 @@ export class PublicRepositoryCloner {
     const repository = normalizePublicGitHubRepository(request.repositoryUrl);
     const requestedBranch =
       request.branch === undefined ? undefined : validateGitBranch(request.branch);
+    const gitConfigContents = createGitConfig(request.accessToken);
     const tempRoot = path.resolve(this.config.tempRoot);
 
     this.assertNotAborted(request.signal);
@@ -281,9 +306,13 @@ export class PublicRepositoryCloner {
 
     const repositoryDirectory = path.join(sessionDirectory, "source");
     const gitConfigPath = path.join(sessionDirectory, "gitconfig");
-    await fs.writeFile(gitConfigPath, "", { encoding: "utf8", flag: "wx" });
 
     try {
+      await fs.writeFile(gitConfigPath, gitConfigContents, {
+        encoding: "utf8",
+        flag: "wx",
+        mode: 0o600,
+      });
       await this.clone(
         repository,
         requestedBranch,
@@ -365,7 +394,7 @@ export class PublicRepositoryCloner {
       }
       throw new RepositoryCloneError(
         "CLONE_FAILED",
-        `Unable to clone public GitHub repository ${repository.fullName}`,
+        `Unable to clone GitHub repository ${repository.fullName}`,
         { cause },
       );
     }
