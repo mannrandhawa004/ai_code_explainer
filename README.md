@@ -12,6 +12,7 @@ apps/api       Express REST API
 apps/worker    BullMQ indexing worker
 packages/shared    Shared schemas, types, and constants
 packages/ai        OpenAI embedding and generation services
+packages/evaluation Deterministic RAG evaluation and CI quality gates
 packages/database  MongoDB models and database helpers
 packages/vector-store  Qdrant client and collection lifecycle
 packages/repository  Safe cloning and repository processing
@@ -47,11 +48,11 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 17. Add GitHub App
 - [x] 18. Add webhooks
 - [x] 19. Add incremental indexing
-- [ ] 20. Add evaluations
+- [x] 20. Add evaluations
 
 ## Current state
 
-Step 19 adds hash-reconciled incremental indexing. Pushes coalesce on a persisted pending commit while an indexing job is active. The worker clones the current selected branch, hashes every safely accepted UTF-8 source, and compares it with MongoDB instead of trusting truncated webhook or compare file lists. Only added and content-modified files are parsed and embedded; removed or renamed paths are deleted from MongoDB and Qdrant, while unchanged vectors are promoted to the new commit without OpenAI calls. Legacy metadata safely triggers one complete rebuild. See [GitHub App and webhook setup](docs/github-app-setup.md).
+Step 20 adds a versioned, repository-specific evaluation suite with file/symbol/line retrieval metrics, citation correctness and grounding, deterministic completeness and hallucination proxies, latency percentiles, configurable token cost, bounded live-adapter execution, reproducible recorded-observation scoring, and CI quality gates. The baseline dataset is pinned to the Step 19 commit so line expectations cannot drift silently. See the [evaluation guide](packages/evaluation/README.md).
 
 ## Prerequisites
 

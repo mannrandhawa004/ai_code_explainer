@@ -1,0 +1,17 @@
+{
+  "minimumCaseSuccessRate": 1,
+  "minimumRecallAt5": 0.8,
+  "minimumRecallAt10": 0.95,
+  "minimumMeanReciprocalRank": 0.7,
+  "minimumExactFileHitRate": 0.85,
+  "minimumExactSymbolHitRate": 0.8,
+  "minimumLineHitRate": 0.8,
+  "minimumCitationPrecision": 0.8,
+  "minimumCitationRecall": 0.8,
+  "minimumCitationGroundedness": 0.95,
+  "minimumAnswerCompleteness": 0.8,
+  "maximumHallucinationRate": 0.05,
+  "maximumRetrievalP95Ms": 2000,
+  "maximumGenerationP95Ms": 60000,
+  "maximumIndexingP95Ms": 300000
+}

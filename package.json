@@ -12,7 +12,8 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "evaluate": "npm run evaluate --workspace @codebase-explainer/evaluation --"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
