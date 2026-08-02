@@ -1,0 +1,305 @@
+{
+  "schemaVersion": 1,
+  "name": "ai-codebase-explainer-v1",
+  "description": "Repository-specific regression questions for retrieval, citations, grounded answers, webhooks, and incremental indexing.",
+  "repository": {
+    "owner": "mannrandhawa004",
+    "name": "ai_code_explainer",
+    "branch": "backend/incremental-indexing",
+    "commitSha": "9c8c82f48da4d0756e98fc39be7c077480cd7343"
+  },
+  "cases": [
+    {
+      "id": "repository-question-pipeline",
+      "question": "How does a repository question move from retrieval to a grounded answer and persisted conversation?",
+      "expectedFiles": [
+        "apps/api/src/services/repository-question.service.ts",
+        "packages/ai/src/repository-answer-generator.ts"
+      ],
+      "expectedSymbols": [
+        "RepositoryQuestionService",
+        "RepositoryAnswerGenerator"
+      ],
+      "expectedLineRanges": [
+        {
+          "filePath": "apps/api/src/services/repository-question.service.ts",
+          "startLine": 245,
+          "endLine": 430
+        },
+        {
+          "filePath": "packages/ai/src/repository-answer-generator.ts",
+          "startLine": 540,
+          "endLine": 640
+        }
+      ],
+      "expectedAnswerConcepts": [
+        {
+          "id": "classify-and-embed",
+          "terms": [
+            "classifies the question",
+            "question classification"
+          ]
+        },
+        {
+          "id": "hybrid-retrieval",
+          "terms": [
+            "semantic search",
+            "exact symbol search"
+          ]
+        },
+        {
+          "id": "grounded-generation",
+          "terms": [
+            "grounded answer",
+            "supplied repository context"
+          ]
+        },
+        {
+          "id": "conversation-persistence",
+          "terms": [
+            "persists the exchange",
+            "conversation is saved"
+          ]
+        }
+      ],
+      "forbiddenAnswerTerms": [
+        "repository modules are imported during retrieval",
+        "the model answers even when no chunks are retrieved"
+      ],
+      "tags": [
+        "rag",
+        "api",
+        "generation"
+      ]
+    },
+    {
+      "id": "citation-validation",
+      "question": "How are model-provided source references validated and converted into file and line citations?",
+      "expectedFiles": [
+        "packages/ai/src/repository-answer-generator.ts"
+      ],
+      "expectedSymbols": [
+        "parseStructuredAnswer",
+        "buildCitedAnswer"
+      ],
+      "expectedLineRanges": [
+        {
+          "filePath": "packages/ai/src/repository-answer-generator.ts",
+          "startLine": 338,
+          "endLine": 405
+        },
+        {
+          "filePath": "packages/ai/src/repository-answer-generator.ts",
+          "startLine": 410,
+          "endLine": 455
+        }
+      ],
+      "expectedAnswerConcepts": [
+        {
+          "id": "structured-output",
+          "terms": [
+            "structured answer",
+            "json schema"
+          ]
+        },
+        {
+          "id": "source-id-validation",
+          "terms": [
+            "unknown repository source",
+            "source ids are validated"
+          ]
+        },
+        {
+          "id": "server-rendered-citations",
+          "terms": [
+            "server adds",
+            "file and line citations"
+          ]
+        }
+      ],
+      "forbiddenAnswerTerms": [
+        "unknown source ids are accepted as valid",
+        "the model decides citation line numbers"
+      ],
+      "tags": [
+        "citations",
+        "grounding",
+        "security"
+      ]
+    },
+    {
+      "id": "incremental-indexing",
+      "question": "How does incremental indexing decide which files to re-embed and safely reconcile MongoDB and Qdrant?",
+      "expectedFiles": [
+        "apps/worker/src/services/incremental-indexing-planner.ts",
+        "apps/worker/src/jobs/repository-indexing.processor.ts"
+      ],
+      "expectedSymbols": [
+        "createIncrementalIndexingPlan",
+        "RepositoryIndexingProcessor"
+      ],
+      "expectedLineRanges": [
+        {
+          "filePath": "apps/worker/src/services/incremental-indexing-planner.ts",
+          "startLine": 43,
+          "endLine": 92
+        },
+        {
+          "filePath": "apps/worker/src/jobs/repository-indexing.processor.ts",
+          "startLine": 369,
+          "endLine": 650
+        }
+      ],
+      "expectedAnswerConcepts": [
+        {
+          "id": "content-hashes",
+          "terms": [
+            "content hash",
+            "hashes every"
+          ]
+        },
+        {
+          "id": "changed-only-embedding",
+          "terms": [
+            "changed files",
+            "only added and modified files"
+          ]
+        },
+        {
+          "id": "removed-file-cleanup",
+          "terms": [
+            "removed file paths",
+            "deletes changed and removed"
+          ]
+        },
+        {
+          "id": "retained-vector-promotion",
+          "terms": [
+            "promote repository commit",
+            "unchanged vectors"
+          ]
+        }
+      ],
+      "forbiddenAnswerTerms": [
+        "the webhook changed-files list is authoritative",
+        "all unchanged files are embedded again"
+      ],
+      "tags": [
+        "indexing",
+        "embeddings",
+        "qdrant"
+      ]
+    },
+    {
+      "id": "push-coalescing",
+      "question": "What happens when multiple GitHub pushes arrive while repository indexing is already active?",
+      "expectedFiles": [
+        "apps/worker/src/services/github-webhook-repository.service.ts"
+      ],
+      "expectedSymbols": [
+        "MongoGitHubWebhookRepositoryOperations"
+      ],
+      "expectedLineRanges": [
+        {
+          "filePath": "apps/worker/src/services/github-webhook-repository.service.ts",
+          "startLine": 43,
+          "endLine": 140
+        }
+      ],
+      "expectedAnswerConcepts": [
+        {
+          "id": "latest-pending-commit",
+          "terms": [
+            "pending index commit",
+            "latest commit"
+          ]
+        },
+        {
+          "id": "active-job-deduplication",
+          "terms": [
+            "existing job",
+            "deduplicated"
+          ]
+        },
+        {
+          "id": "queue-new-work",
+          "terms": [
+            "queues",
+            "producer enqueue"
+          ]
+        }
+      ],
+      "forbiddenAnswerTerms": [
+        "one new indexing job is enqueued for every push",
+        "the pending commit is cleared while an active job runs"
+      ],
+      "tags": [
+        "github",
+        "webhooks",
+        "queue"
+      ]
+    },
+    {
+      "id": "qdrant-incremental-mutations",
+      "question": "How are changed file vectors deleted and retained vectors promoted to a new commit in Qdrant?",
+      "expectedFiles": [
+        "packages/vector-store/src/code-chunk-store.ts"
+      ],
+      "expectedSymbols": [
+        "deleteFileChunks",
+        "promoteRepositoryCommit"
+      ],
+      "expectedLineRanges": [
+        {
+          "filePath": "packages/vector-store/src/code-chunk-store.ts",
+          "startLine": 555,
+          "endLine": 617
+        },
+        {
+          "filePath": "packages/vector-store/src/code-chunk-store.ts",
+          "startLine": 619,
+          "endLine": 660
+        }
+      ],
+      "expectedAnswerConcepts": [
+        {
+          "id": "tenant-scope",
+          "terms": [
+            "user id",
+            "repository and branch"
+          ]
+        },
+        {
+          "id": "path-batching",
+          "terms": [
+            "batches",
+            "256"
+          ]
+        },
+        {
+          "id": "synchronous-completion",
+          "terms": [
+            "wait",
+            "completed"
+          ]
+        },
+        {
+          "id": "payload-promotion",
+          "terms": [
+            "setpayload",
+            "updates the commit sha"
+          ]
+        }
+      ],
+      "forbiddenAnswerTerms": [
+        "the delete filter omits the repository id",
+        "commit promotion rewrites vectors from every tenant"
+      ],
+      "tags": [
+        "qdrant",
+        "multi-tenant",
+        "indexing"
+      ]
+    }
+  ]
+}

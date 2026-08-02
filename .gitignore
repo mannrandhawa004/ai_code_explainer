@@ -19,6 +19,7 @@ data/
 repos/
 tmp/
 temp/
+evaluations/reports/
 
 # Logs and OS/editor files
 *.log
