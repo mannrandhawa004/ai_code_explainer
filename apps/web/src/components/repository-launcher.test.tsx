@@ -1,37 +1,46 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { getCurrentUserOrNull } from "@/lib/api/auth";
 
 import { RepositoryLauncher } from "./repository-launcher";
 
-const push = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/api/auth", () => ({ getCurrentUserOrNull: vi.fn() }));
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push }),
-}));
+function renderLauncher() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const Wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  return render(<RepositoryLauncher />, { wrapper: Wrapper });
+}
 
-beforeEach(() => push.mockReset());
+beforeEach(() => vi.mocked(getCurrentUserOrNull).mockReset());
 
 describe("RepositoryLauncher", () => {
-  it("validates a repository ID before navigation", async () => {
-    const user = userEvent.setup();
-    render(<RepositoryLauncher />);
+  it("sends signed-out visitors to the in-app sign-in screen", async () => {
+    vi.mocked(getCurrentUserOrNull).mockResolvedValue(null);
+    renderLauncher();
 
-    await user.type(screen.getByLabelText("Repository ID"), "invalid");
-    await user.click(screen.getByRole("button", { name: "Open repository chat" }));
-
-    expect(screen.getByRole("alert")).toHaveTextContent("24-character");
-    expect(push).not.toHaveBeenCalled();
+    const link = await screen.findByRole("link", { name: "Sign in with GitHub" });
+    expect(link).toHaveAttribute("href", "/auth");
+    expect(screen.queryByLabelText("Repository ID")).not.toBeInTheDocument();
   });
 
-  it("opens the chat route for a normalized repository ID", async () => {
-    const user = userEvent.setup();
-    render(<RepositoryLauncher />);
-    const repositoryId = "aaaaaaaaaaaaaaaaaaaaaaaa";
+  it("sends a returning user directly to the repository workspace", async () => {
+    vi.mocked(getCurrentUserOrNull).mockResolvedValue({
+      id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+      githubId: "123",
+      username: "octocat",
+      avatarUrl: "https://avatars.githubusercontent.com/u/1",
+    });
+    renderLauncher();
 
-    await user.type(screen.getByLabelText("Repository ID"), ` ${repositoryId} `);
-    await user.click(screen.getByRole("button", { name: "Open repository chat" }));
-
-    expect(push).toHaveBeenCalledWith(`/repositories/${repositoryId}/chat`);
+    const link = await screen.findByRole("link", { name: /Continue as @octocat/u });
+    expect(link).toHaveAttribute("href", "/repositories");
   });
 });

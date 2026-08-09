@@ -1,26 +1,18 @@
 "use client";
 
-import { ArrowRight, Database, LockKeyhole } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowRight, Database, GitFork, LockKeyhole } from "lucide-react";
+import Link from "next/link";
 
-import { repositoryIdPattern } from "@/lib/api/repository-chat";
+import { getCurrentUserOrNull } from "@/lib/api/auth";
 
 export function RepositoryLauncher() {
-  const router = useRouter();
-  const [repositoryId, setRepositoryId] = useState("");
-  const [error, setError] = useState("");
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const normalized = repositoryId.trim();
-    if (!repositoryIdPattern.test(normalized)) {
-      setError("Enter the 24-character ID of an indexed repository.");
-      return;
-    }
-    setError("");
-    router.push(`/repositories/${normalized}/chat`);
-  }
+  const userQuery = useQuery({
+    queryKey: ["current-user"],
+    queryFn: getCurrentUserOrNull,
+    retry: false,
+  });
+  const isSignedIn = Boolean(userQuery.data);
 
   return (
     <aside className="relative overflow-hidden rounded-[28px] border border-white/10 bg-[var(--ink)] p-6 text-white shadow-[0_28px_100px_rgba(14,27,24,0.23)] sm:p-8">
@@ -36,54 +28,52 @@ export function RepositoryLauncher() {
           Open a workspace
         </p>
         <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">
-          Start with an indexed repository.
+          Import. Index. Then ask.
         </h2>
         <p className="mt-3 text-sm leading-6 text-white/62">
-          Paste the repository ID returned by the import flow. Access is checked
-          by the API before any model request is made.
+          Sign in through the app, paste a GitHub repository URL, and follow
+          indexing progress from one screen. Chat unlocks only when the code is
+          ready.
         </p>
 
-        <form className="mt-8" onSubmit={handleSubmit} noValidate>
-          <label
-            htmlFor="repository-id"
-            className="mb-2 block text-xs font-medium text-white/72"
-          >
-            Repository ID
-          </label>
-          <input
-            id="repository-id"
-            value={repositoryId}
-            onChange={(event) => {
-              setRepositoryId(event.target.value);
-              if (error) setError("");
-            }}
-            placeholder="64f0c8a41d1b2c3d4e5f6789"
-            spellCheck={false}
-            autoComplete="off"
-            aria-describedby={error ? "repository-id-error" : "repository-id-help"}
-            aria-invalid={Boolean(error)}
-            className="h-12 w-full rounded-xl border border-white/12 bg-white/[0.07] px-4 font-mono text-sm text-white outline-none transition placeholder:text-white/24 focus:border-[var(--accent)]/65 focus:bg-white/10 focus:ring-4 focus:ring-[var(--accent)]/10"
-          />
-          <div className="mt-2 min-h-5 text-xs">
-            {error ? (
-              <p id="repository-id-error" role="alert" className="text-rose-300">
-                {error}
+        <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.055] p-4">
+          <div className="flex items-start gap-3">
+            <LockKeyhole
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0 text-[var(--accent)]"
+            />
+            <div>
+              <p className="text-xs font-semibold text-white/88">
+                GitHub-backed account
               </p>
-            ) : (
-              <p id="repository-id-help" className="flex items-center gap-1.5 text-white/38">
-                <LockKeyhole aria-hidden="true" className="size-3" />
-                Ownership is verified using your session.
+              <p className="mt-1 text-xs leading-5 text-white/45">
+                The same button securely creates a first-time account or signs
+                a returning user back in.
               </p>
-            )}
+            </div>
           </div>
-          <button
-            type="submit"
-            className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-5 text-sm font-bold text-[var(--ink)] transition hover:bg-[var(--accent-bright)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] active:translate-y-px"
+        </div>
+
+        {userQuery.isPending ? (
+          <div className="mt-6 h-12 animate-pulse rounded-xl bg-white/10" />
+        ) : (
+          <Link
+            href={isSignedIn ? "/repositories" : "/auth"}
+            className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-5 text-sm font-bold text-[var(--ink)] transition hover:bg-[var(--accent-bright)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] active:translate-y-px"
           >
-            Open repository chat
-            <ArrowRight aria-hidden="true" className="size-4" />
-          </button>
-        </form>
+            {isSignedIn ? (
+              <>
+                Continue as @{userQuery.data?.username}
+                <ArrowRight aria-hidden="true" className="size-4" />
+              </>
+            ) : (
+              <>
+                <GitFork aria-hidden="true" className="size-4" />
+                {userQuery.isSuccess ? "Sign in with GitHub" : "Open sign in"}
+              </>
+            )}
+          </Link>
+        )}
       </div>
     </aside>
   );
