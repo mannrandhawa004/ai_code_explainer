@@ -1,5 +1,6 @@
 import {
-  createOpenAICodeChunkEmbeddingServiceFromEnv,
+  classifyAIProviderError,
+  createCodeChunkEmbeddingServiceFromEnv,
   type CodeChunkEmbeddingResult,
   type CodeChunkEmbeddingService,
 } from "@codebase-explainer/ai";
@@ -301,6 +302,16 @@ function normalizeIndexingError(
       "INVALID_JOB",
       "Repository source files could not be processed safely",
       false,
+      { cause: error },
+    );
+  }
+
+  const providerFailure = classifyAIProviderError(error);
+  if (providerFailure !== undefined) {
+    return new RepositoryIndexingError(
+      "INDEXING_DEPENDENCY_FAILED",
+      providerFailure.message,
+      providerFailure.retryable,
       { cause: error },
     );
   }
@@ -763,7 +774,7 @@ export function createDefaultRepositoryIndexingProcessor(
       filter: new RepositoryFileFilter(),
       hasher: new RepositoryFileHasher(),
       chunker: new RepositoryTreeSitterChunker(),
-      embedder: createOpenAICodeChunkEmbeddingServiceFromEnv(process.env),
+      embedder: createCodeChunkEmbeddingServiceFromEnv(process.env),
       vectorCollection,
       chunkStore: new QdrantCodeChunkStore(vectorConfig, vectorCollection.client),
       ...(environment.GITHUB_APP_ID && environment.GITHUB_PRIVATE_KEY

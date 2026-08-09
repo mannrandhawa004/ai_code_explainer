@@ -79,6 +79,7 @@ export async function startWorkerRuntime(
     repositoryWorker = createdRepositoryWorker;
     const createdIndexingProducer = new BullMqRepositoryIndexingProducer(
       environment.REDIS_URL,
+      environment.INDEXING_MAX_ATTEMPTS,
     );
     indexingProducer = createdIndexingProducer;
     const repositoryOperations = new MongoGitHubWebhookRepositoryOperations(

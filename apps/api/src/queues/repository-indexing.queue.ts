@@ -32,12 +32,21 @@ export interface RepositoryIndexingQueueContract {
   close(): Promise<void>;
 }
 
-const defaultJobOptions: JobsOptions = {
-  attempts: 3,
-  backoff: { type: "exponential", delay: 5_000 },
-  removeOnComplete: { age: 3_600, count: 1_000 },
-  removeOnFail: { age: 7 * 24 * 3_600, count: 5_000 },
-};
+function createDefaultJobOptions(maxAttempts: number): JobsOptions {
+  if (
+    !Number.isSafeInteger(maxAttempts) ||
+    maxAttempts < 1 ||
+    maxAttempts > 10
+  ) {
+    throw new Error("Indexing maxAttempts must be between 1 and 10");
+  }
+  return {
+    attempts: maxAttempts,
+    backoff: { type: "exponential", delay: 5_000 },
+    removeOnComplete: { age: 3_600, count: 1_000 },
+    removeOnFail: { age: 7 * 24 * 3_600, count: 5_000 },
+  };
+}
 
 export class BullMqRepositoryIndexingQueue
   implements RepositoryIndexingQueueContract
@@ -51,7 +60,10 @@ export class BullMqRepositoryIndexingQueue
   private connectionPromise: Promise<void> | undefined;
   private closePromise: Promise<void> | undefined;
 
-  constructor(redisUrl: string = env.REDIS_URL) {
+  constructor(
+    redisUrl: string = env.REDIS_URL,
+    maxAttempts: number = env.INDEXING_MAX_ATTEMPTS,
+  ) {
     this.connection = new Redis(redisUrl, {
       connectionName: "codebase-explainer-api-queue",
       maxRetriesPerRequest: 1,
@@ -60,7 +72,7 @@ export class BullMqRepositoryIndexingQueue
     });
     this.queue = new Queue(indexingQueueName, {
       connection: this.connection,
-      defaultJobOptions,
+      defaultJobOptions: createDefaultJobOptions(maxAttempts),
     });
     this.connection.on("error", (error) => {
       logger.warn({ error }, "Repository indexing queue Redis error");

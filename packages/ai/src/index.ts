@@ -43,6 +43,48 @@ export {
   type CodeChunkEmbeddingTextOptions,
 } from "./embedding-text.js";
 export {
+  GoogleAnswerProvider,
+  GoogleEmbeddingProvider,
+  createGoogleEmbeddingGeneratorFromEnv,
+  createGoogleRepositoryAnswerGeneratorFromEnv,
+  defaultGoogleApiBaseUrl,
+  defaultGoogleChatModel,
+  defaultGoogleEmbeddingDimensions,
+  defaultGoogleEmbeddingModel,
+  defaultGoogleRequestTimeoutMs,
+  type GoogleEmbeddingProviderConfig,
+  type GoogleEmbeddingPurpose,
+  type GoogleProviderConfig,
+} from "./google-provider.js";
+export {
+  OllamaAnswerProvider,
+  OllamaEmbeddingProvider,
+  createOllamaEmbeddingGeneratorFromEnv,
+  createOllamaRepositoryAnswerGeneratorFromEnv,
+  defaultOllamaChatModel,
+  defaultOllamaEmbeddingDimensions,
+  defaultOllamaEmbeddingModel,
+  defaultOllamaKeepAlive,
+  defaultOllamaRequestTimeoutMs,
+  defaultOllamaUrl,
+  type OllamaProviderConfig,
+} from "./ollama-provider.js";
+export {
+  AIProviderError,
+  classifyAIProviderError,
+  type AIProviderErrorCode,
+  type AIProviderFailure,
+  type AIProviderName,
+} from "./provider-error.js";
+export {
+  createCodeChunkEmbeddingServiceFromEnv,
+  createEmbeddingGeneratorFromEnv,
+  createQuestionEmbeddingServiceFromEnv,
+  createRepositoryAnswerGeneratorFromEnv,
+  defaultAIProvider,
+  resolveAIProvider,
+} from "./provider-factory.js";
+export {
   classifyRepositoryQuestion,
   extractExactSymbolName,
   repositoryQuestionCategories,

@@ -83,7 +83,14 @@ export function repositoryFailureMessage(
 ): string {
   const currentStep = status.job?.currentStep ?? status.status;
   if (currentStep === "embedding") {
-    return "Embedding generation failed. Check the server's AI provider key, API credits, quota, and model access, then retry indexing.";
+    const providerMessage = status.job?.errorMessage ?? status.errorMessage;
+    if (
+      providerMessage &&
+      providerMessage !== "A repository indexing dependency is unavailable"
+    ) {
+      return providerMessage;
+    }
+    return "Embedding generation failed. For Google AI, check the server's GOOGLE_API_KEY or GEMINI_API_KEY, API access, and free-tier quota.";
   }
   return (
     status.job?.errorMessage ??

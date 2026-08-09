@@ -58,6 +58,6 @@ describe("repository API", () => {
       },
     };
 
-    expect(repositoryFailureMessage(status)).toContain("API credits");
+    expect(repositoryFailureMessage(status)).toContain("GOOGLE_API_KEY");
   });
 });

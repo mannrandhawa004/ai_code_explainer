@@ -1,4 +1,8 @@
-import type { CodeChunkEmbeddingResult } from "@codebase-explainer/ai";
+import {
+  AIProviderError,
+  EmbeddingGenerationError,
+  type CodeChunkEmbeddingResult,
+} from "@codebase-explainer/ai";
 import type {
   ClonedPublicRepository,
   FilteredRepositoryFiles,
@@ -559,6 +563,40 @@ describe("RepositoryIndexingProcessor", () => {
       userId,
       errorMessage: "A repository indexing dependency is unavailable",
       willRetry: true,
+    });
+  });
+
+  it("does not retry a hosted-provider credit failure from the clone stage", async () => {
+    const dependencies = createDependencies();
+    const providerError = new AIProviderError(
+      "openai",
+      "QUOTA_EXHAUSTED",
+      "The hosted AI provider has no available credits or quota. Configure Google Gemini's free tier, or update the provider account.",
+      false,
+      429,
+    );
+    vi.mocked(dependencies.embedder.embedChunks).mockRejectedValue(
+      new EmbeddingGenerationError(
+        "PROVIDER_ERROR",
+        "Embedding provider request failed",
+        undefined,
+        { cause: providerError },
+      ),
+    );
+
+    await expect(
+      createProcessor(dependencies).process(createJob(), jobData),
+    ).rejects.toMatchObject({
+      code: "INDEXING_DEPENDENCY_FAILED",
+      retryable: false,
+    });
+    expect(dependencies.persistence.fail).toHaveBeenCalledWith({
+      bullJobId: "job-1",
+      repositoryId,
+      userId,
+      errorMessage:
+        "The hosted AI provider has no available credits or quota. Configure Google Gemini's free tier, or update the provider account.",
+      willRetry: false,
     });
   });
 

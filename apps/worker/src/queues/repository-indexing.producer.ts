@@ -21,12 +21,21 @@ export interface RepositoryIndexingProducerContract {
   close(): Promise<void>;
 }
 
-const defaultJobOptions: JobsOptions = {
-  attempts: 3,
-  backoff: { type: "exponential", delay: 5_000 },
-  removeOnComplete: { age: 3_600, count: 1_000 },
-  removeOnFail: { age: 7 * 24 * 3_600, count: 5_000 },
-};
+function createDefaultJobOptions(maxAttempts: number): JobsOptions {
+  if (
+    !Number.isSafeInteger(maxAttempts) ||
+    maxAttempts < 1 ||
+    maxAttempts > 10
+  ) {
+    throw new Error("Indexing maxAttempts must be between 1 and 10");
+  }
+  return {
+    attempts: maxAttempts,
+    backoff: { type: "exponential", delay: 5_000 },
+    removeOnComplete: { age: 3_600, count: 1_000 },
+    removeOnFail: { age: 7 * 24 * 3_600, count: 5_000 },
+  };
+}
 
 export class BullMqRepositoryIndexingProducer
   implements RepositoryIndexingProducerContract
@@ -40,7 +49,7 @@ export class BullMqRepositoryIndexingProducer
   private connectionPromise: Promise<void> | undefined;
   private closePromise: Promise<void> | undefined;
 
-  constructor(redisUrl: string) {
+  constructor(redisUrl: string, maxAttempts = 1) {
     this.connection = new Redis(redisUrl, {
       connectionName: "codebase-explainer-webhook-indexing-producer",
       maxRetriesPerRequest: 1,
@@ -49,7 +58,7 @@ export class BullMqRepositoryIndexingProducer
     });
     this.queue = new Queue(indexingQueueName, {
       connection: this.connection,
-      defaultJobOptions,
+      defaultJobOptions: createDefaultJobOptions(maxAttempts),
     });
     this.connection.on("error", (error) => {
       logger.warn({ error }, "Webhook indexing producer Redis error");
