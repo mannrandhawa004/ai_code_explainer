@@ -50,15 +50,64 @@ const workerEnvSchema = z.object({
     .string()
     .optional()
     .transform((value) => value?.trim() || undefined),
+  AI_PROVIDER: z.enum(["google", "openai", "ollama"]).default("google"),
+  GOOGLE_API_KEY: optionalTrimmedString,
+  GEMINI_API_KEY: optionalTrimmedString,
+  GOOGLE_API_BASE_URL: z
+    .url()
+    .default("https://generativelanguage.googleapis.com/v1beta"),
+  GOOGLE_EMBEDDING_MODEL: z.string().trim().min(1).default("gemini-embedding-2"),
+  GOOGLE_EMBEDDING_DIMENSIONS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(768),
+  GOOGLE_REQUEST_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(120_000),
+  GOOGLE_EMBEDDING_BATCH_SIZE: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(16),
+  GOOGLE_EMBEDDING_REQUEST_CONCURRENCY: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(1),
+  GOOGLE_EMBEDDING_MAX_INPUT_TOKENS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(8_192),
+  GOOGLE_EMBEDDING_MAX_REQUEST_TOKENS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(65_536),
   OPENAI_API_KEY: optionalTrimmedString,
+  OPENAI_EMBEDDING_DIMENSIONS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(1_536),
+  OLLAMA_URL: z.url().default("http://localhost:11434"),
+  OLLAMA_EMBEDDING_DIMENSIONS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(1_024),
   QDRANT_COLLECTION: z.string().min(1).default("code_chunks"),
-  QDRANT_VECTOR_SIZE: z.coerce.number().int().positive().default(1_536),
+  QDRANT_VECTOR_SIZE: z.coerce.number().int().positive().default(768),
   QDRANT_REQUEST_TIMEOUT_MS: z.coerce
     .number()
     .int()
     .positive()
     .default(10_000),
   INDEXING_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(2),
+  INDEXING_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(1),
   GITHUB_WEBHOOK_CONCURRENCY: z.coerce
     .number()
     .int()
@@ -108,6 +157,17 @@ export function parseWorkerEnvironment(
     result.data.GITHUB_APP_ID,
     result.data.GITHUB_PRIVATE_KEY,
   ].filter(Boolean).length;
+  const selectedEmbeddingDimensions =
+    result.data.AI_PROVIDER === "google"
+      ? result.data.GOOGLE_EMBEDDING_DIMENSIONS
+      : result.data.AI_PROVIDER === "ollama"
+        ? result.data.OLLAMA_EMBEDDING_DIMENSIONS
+        : result.data.OPENAI_EMBEDDING_DIMENSIONS;
+  if (result.data.QDRANT_VECTOR_SIZE !== selectedEmbeddingDimensions) {
+    throw new Error(
+      `QDRANT_VECTOR_SIZE (${result.data.QDRANT_VECTOR_SIZE}) must match ${result.data.AI_PROVIDER} embedding dimensions (${selectedEmbeddingDimensions})`,
+    );
+  }
   if (configuredGitHubValues === 1) {
     throw new Error(
       "Private repository indexing requires GITHUB_APP_ID and GITHUB_PRIVATE_KEY",
@@ -126,8 +186,20 @@ export function parseWorkerEnvironment(
     if (!result.data.QDRANT_API_KEY) {
       throw new Error("QDRANT_API_KEY must be configured in production");
     }
-    if (!result.data.OPENAI_API_KEY) {
+    if (
+      result.data.AI_PROVIDER === "openai" &&
+      !result.data.OPENAI_API_KEY
+    ) {
       throw new Error("OPENAI_API_KEY must be configured in production");
+    }
+    if (
+      result.data.AI_PROVIDER === "google" &&
+      !result.data.GOOGLE_API_KEY &&
+      !result.data.GEMINI_API_KEY
+    ) {
+      throw new Error(
+        "GOOGLE_API_KEY or GEMINI_API_KEY must be configured in production",
+      );
     }
     if (configuredGitHubValues !== 2) {
       throw new Error(

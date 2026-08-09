@@ -8,6 +8,8 @@ const secureProductionEnvironment: NodeJS.ProcessEnv = {
   REDIS_URL: "rediss://cache.example.com:6380",
   QDRANT_URL: "https://vectors.example.com",
   QDRANT_API_KEY: "qdrant-test-key",
+  QDRANT_VECTOR_SIZE: "1536",
+  AI_PROVIDER: "openai",
   OPENAI_API_KEY: "openai-test-key",
   GITHUB_APP_ID: "123456",
   GITHUB_PRIVATE_KEY: "test-private-key",
@@ -21,6 +23,7 @@ describe("worker environment", () => {
     expect(result.INDEXING_CONCURRENCY).toBe(2);
     expect(result.MAX_REPOSITORY_FILES).toBe(5_000);
     expect(result.GITHUB_WEBHOOK_CONCURRENCY).toBe(1);
+    expect(result.INDEXING_MAX_ATTEMPTS).toBe(1);
   });
 
   it("requires an encrypted Redis connection in production", () => {
@@ -38,6 +41,44 @@ describe("worker environment", () => {
     expect(result.NODE_ENV).toBe("production");
     expect(result.QDRANT_API_KEY).toBe("qdrant-test-key");
     expect(result.OPENAI_API_KEY).toBe("openai-test-key");
+  });
+
+  it("accepts Ollama without an OpenAI key when vector dimensions match", () => {
+    const result = parseWorkerEnvironment({
+      ...secureProductionEnvironment,
+      AI_PROVIDER: "ollama",
+      OPENAI_API_KEY: "",
+      QDRANT_VECTOR_SIZE: "1024",
+    });
+
+    expect(result.AI_PROVIDER).toBe("ollama");
+    expect(result.OLLAMA_EMBEDDING_DIMENSIONS).toBe(1_024);
+  });
+
+  it("accepts Google AI without an OpenAI key when vector dimensions match", () => {
+    const result = parseWorkerEnvironment({
+      ...secureProductionEnvironment,
+      AI_PROVIDER: "google",
+      OPENAI_API_KEY: "",
+      GOOGLE_API_KEY: "google-test-key",
+      QDRANT_VECTOR_SIZE: "768",
+    });
+
+    expect(result.AI_PROVIDER).toBe("google");
+    expect(result.GOOGLE_EMBEDDING_DIMENSIONS).toBe(768);
+  });
+
+  it("requires a Google AI key when Google is selected in production", () => {
+    expect(() =>
+      parseWorkerEnvironment({
+        ...secureProductionEnvironment,
+        AI_PROVIDER: "google",
+        OPENAI_API_KEY: "",
+        GOOGLE_API_KEY: "",
+        GEMINI_API_KEY: "",
+        QDRANT_VECTOR_SIZE: "768",
+      }),
+    ).toThrow("GOOGLE_API_KEY or GEMINI_API_KEY must be configured");
   });
 
   it.each([

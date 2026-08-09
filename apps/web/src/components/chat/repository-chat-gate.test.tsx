@@ -95,7 +95,7 @@ describe("RepositoryChatGate", () => {
     const user = userEvent.setup();
     renderGate();
 
-    expect(await screen.findByText(/Check the server's AI provider key/u)).toBeInTheDocument();
+    expect(await screen.findByText(/GOOGLE_API_KEY/u)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Retry indexing" }));
     expect(retryRepositoryIndexing).toHaveBeenCalledWith(repositoryId);
     expect(screen.queryByText("Unlocked repository composer")).not.toBeInTheDocument();

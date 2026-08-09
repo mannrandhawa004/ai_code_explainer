@@ -5,8 +5,8 @@ import {
 } from "@codebase-explainer/database";
 import {
   classifyRepositoryQuestion,
-  createOpenAIQuestionEmbeddingServiceFromEnv,
-  createOpenAIRepositoryAnswerGeneratorFromEnv,
+  createQuestionEmbeddingServiceFromEnv,
+  createRepositoryAnswerGeneratorFromEnv,
   extractExactSymbolName,
   type AnswerTokenUsage,
   type QuestionEmbedding,
@@ -602,9 +602,9 @@ export function getDefaultRepositoryQuestionService(): RepositoryQuestionService
   defaultRepositoryQuestionService ??= new RepositoryQuestionService({
     repositories: new MongooseRepositoryQuestionGateway(),
     conversations: new MongooseRepositoryQuestionConversationGateway(),
-    embedder: createOpenAIQuestionEmbeddingServiceFromEnv(process.env),
+    embedder: createQuestionEmbeddingServiceFromEnv(process.env),
     retriever: new QdrantCodeChunkSearch(vectorStoreConfig),
-    answerer: createOpenAIRepositoryAnswerGeneratorFromEnv(process.env),
+    answerer: createRepositoryAnswerGeneratorFromEnv(process.env),
     searchLimit: env.QUESTION_SEARCH_LIMIT,
     ...(env.QUESTION_SCORE_THRESHOLD === undefined
       ? {}

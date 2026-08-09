@@ -45,9 +45,53 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => value?.trim() || undefined),
+  AI_PROVIDER: z.enum(["google", "openai", "ollama"]).default("google"),
+  GOOGLE_API_KEY: optionalTrimmedString,
+  GEMINI_API_KEY: optionalTrimmedString,
+  GOOGLE_API_BASE_URL: z
+    .url()
+    .default("https://generativelanguage.googleapis.com/v1beta"),
+  GOOGLE_EMBEDDING_MODEL: z.string().trim().min(1).default("gemini-embedding-2"),
+  GOOGLE_EMBEDDING_DIMENSIONS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(768),
+  GOOGLE_CHAT_MODEL: z.string().trim().min(1).default("gemini-2.5-flash-lite"),
+  GOOGLE_REQUEST_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(120_000),
+  GOOGLE_ANSWER_MAX_OUTPUT_TOKENS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(2_000),
+  GOOGLE_MAX_CONTEXT_CHARACTERS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60_000),
+  GOOGLE_MAX_HISTORY_CHARACTERS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(12_000),
   OPENAI_API_KEY: optionalTrimmedString,
+  OPENAI_EMBEDDING_DIMENSIONS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(1_536),
+  OLLAMA_URL: z.url().default("http://localhost:11434"),
+  OLLAMA_EMBEDDING_DIMENSIONS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(1_024),
   QDRANT_COLLECTION: z.string().min(1).default("code_chunks"),
-  QDRANT_VECTOR_SIZE: z.coerce.number().int().positive().default(1_536),
+  QDRANT_VECTOR_SIZE: z.coerce.number().int().positive().default(768),
   QDRANT_REQUEST_TIMEOUT_MS: z.coerce
     .number()
     .int()
@@ -66,6 +110,7 @@ const envSchema = z.object({
       typeof value === "string" && !value.trim() ? undefined : value,
     z.coerce.number().finite().optional(),
   ),
+  INDEXING_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(1),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
@@ -128,6 +173,17 @@ export function parseApiEnvironment(
   }
 
   const parsed = result.data;
+  const selectedEmbeddingDimensions =
+    parsed.AI_PROVIDER === "google"
+      ? parsed.GOOGLE_EMBEDDING_DIMENSIONS
+      : parsed.AI_PROVIDER === "ollama"
+        ? parsed.OLLAMA_EMBEDDING_DIMENSIONS
+        : parsed.OPENAI_EMBEDDING_DIMENSIONS;
+  if (parsed.QDRANT_VECTOR_SIZE !== selectedEmbeddingDimensions) {
+    throw new Error(
+      `QDRANT_VECTOR_SIZE (${parsed.QDRANT_VECTOR_SIZE}) must match ${parsed.AI_PROVIDER} embedding dimensions (${selectedEmbeddingDimensions})`,
+    );
+  }
   const githubRequiredValues = [
     parsed.GITHUB_APP_ID,
     parsed.GITHUB_CLIENT_ID,
@@ -187,8 +243,17 @@ export function parseApiEnvironment(
     if (!parsed.QDRANT_API_KEY) {
       throw new Error("QDRANT_API_KEY must be configured in production");
     }
-    if (!parsed.OPENAI_API_KEY) {
+    if (parsed.AI_PROVIDER === "openai" && !parsed.OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY must be configured in production");
+    }
+    if (
+      parsed.AI_PROVIDER === "google" &&
+      !parsed.GOOGLE_API_KEY &&
+      !parsed.GEMINI_API_KEY
+    ) {
+      throw new Error(
+        "GOOGLE_API_KEY or GEMINI_API_KEY must be configured in production",
+      );
     }
     if (configuredGitHubValues !== githubRequiredValues.length) {
       throw new Error("GitHub authentication must be configured in production");

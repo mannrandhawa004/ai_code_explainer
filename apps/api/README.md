@@ -12,7 +12,7 @@ npm run test --workspace @codebase-explainer/api
 npm run build --workspace @codebase-explainer/api
 ```
 
-Build the production API image from the repository root with `npm run containers:build:api`. It runs as a non-root user, includes an `/api/health` container check, and receives graceful `SIGTERM` shutdown through Tini. Production additionally requires TLS-managed MongoDB and Redis, HTTPS Qdrant with an API key, and `OPENAI_API_KEY`. See the [deployment guide](../../docs/deployment.md).
+Build the production API image from the repository root with `npm run containers:build:api`. It runs as a non-root user, includes an `/api/health` container check, and receives graceful `SIGTERM` shutdown through Tini. Production additionally requires TLS-managed MongoDB and Redis, HTTPS Qdrant with an API key, and credentials for the selected Google, OpenAI, or optional Ollama provider. See the [deployment guide](../../docs/deployment.md).
 
 ## Current endpoints
 

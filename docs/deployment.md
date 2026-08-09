@@ -34,7 +34,7 @@ The default Compose command still starts only MongoDB, Redis, and Qdrant:
 docker compose up -d
 ```
 
-To exercise the containerized API and worker, copy `.env.example` to `.env`, set `OPENAI_API_KEY`, and configure GitHub values when testing private repositories or webhooks. Then run:
+To exercise the containerized API and worker, copy `.env.example` to `.env`, set `GOOGLE_API_KEY` (or select another provider), and configure GitHub values when testing private repositories or webhooks. Then run:
 
 ```powershell
 docker compose --profile application up --build
@@ -67,7 +67,7 @@ Never use the Compose database ports or named volumes in production. Give the AP
 
 ## Required production configuration
 
-Both backend services fail fast unless MongoDB uses `mongodb+srv://` or explicit `tls=true`, Redis uses `rediss://`, Qdrant uses `https://` with an API key, and an OpenAI API key is present.
+Both backend services fail fast unless MongoDB uses `mongodb+srv://` or explicit `tls=true`, Redis uses `rediss://`, Qdrant uses `https://` with an API key, and the selected AI provider is configured. Google accepts `GOOGLE_API_KEY` or `GEMINI_API_KEY`; an OpenAI key is required only when `AI_PROVIDER=openai`.
 
 | Variable | API | Worker | Notes |
 |---|:---:|:---:|---|
@@ -76,8 +76,10 @@ Both backend services fail fast unless MongoDB uses `mongodb+srv://` or explicit
 | `REDIS_URL` | Yes | Yes | Must use `rediss://`. |
 | `QDRANT_URL` / `QDRANT_API_KEY` | Yes | Yes | HTTPS cloud endpoint and secret. |
 | `QDRANT_COLLECTION` / `QDRANT_VECTOR_SIZE` | Yes | Yes | Must match across services. |
-| `OPENAI_API_KEY` | Yes | Yes | Store only in the platform secret manager. |
-| OpenAI model and limit variables | Yes | Yes | Keep embedding model/dimensions aligned. |
+| `AI_PROVIDER` | Yes | Yes | Select `google`, `openai`, or `ollama`. |
+| `GOOGLE_API_KEY` / `GEMINI_API_KEY` | Conditional | Conditional | One is required for Google; store it only in the platform secret manager. |
+| `OPENAI_API_KEY` | Conditional | Conditional | Required for OpenAI; store only in the platform secret manager. |
+| Provider model and limit variables | Yes | Yes | Keep embedding model, Qdrant collection, and dimensions aligned. |
 | `FRONTEND_URL` | Yes | No | Exact HTTPS origin; this is the CORS allowlist. |
 | `GITHUB_APP_ID` / `GITHUB_PRIVATE_KEY` | Yes | Yes | Worker needs repository-scoped installation tokens. |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | Yes | No | OAuth is handled by the API. |
