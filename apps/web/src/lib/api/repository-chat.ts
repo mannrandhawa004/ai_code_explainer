@@ -1,5 +1,6 @@
 export const maximumQuestionCharacters = 4_000;
-export const repositoryIdPattern = /^[0-9a-f]{24}$/iu;
+export { repositoryIdPattern } from "./repositories";
+import { repositoryIdPattern } from "./repositories";
 
 export type RepositoryAnswerSource = {
   filePath: string;

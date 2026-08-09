@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { RepositoryChat } from "@/components/chat/repository-chat";
+import { RepositoryChatGate } from "@/components/chat/repository-chat-gate";
 import { repositoryIdPattern } from "@/lib/api/repository-chat";
 
 export const metadata: Metadata = { title: "Repository chat" };
@@ -16,5 +16,5 @@ export default async function RepositoryChatPage({
     notFound();
   }
 
-  return <RepositoryChat repositoryId={repositoryId} />;
+  return <RepositoryChatGate repositoryId={repositoryId} />;
 }
