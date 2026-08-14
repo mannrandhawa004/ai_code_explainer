@@ -34,6 +34,8 @@ POST /api/repositories/import
 POST /api/repositories/:id/index
 GET /api/repositories/:id/status
 GET /api/repositories/:id/import-graph
+GET /api/repositories/:id/symbol-graph
+GET /api/repositories/:id/symbol-references?symbol=:symbolName
 POST /api/repositories/:id/index/cancel
 POST /api/repositories/:id/chat
 ```
@@ -63,6 +65,8 @@ The webhook endpoint is mounted before the normal JSON parser so `X-Hub-Signatur
 The chat endpoint validates a server-authenticated user, checks repository ownership and indexing status before provider calls, retrieves only the repository's current tenant/branch/commit vectors, generates a grounded response, and persists the exchange with model, usage, and latency metadata. Authentication is fail-closed until an authentication middleware supplies `response.locals.authenticatedUserId`; request body fields and unverified headers are never accepted as identity.
 
 The import-graph endpoint is available only after indexing is complete. It loads file metadata for the authenticated user's repository, selected branch, and exact indexed commit, then returns deterministic file nodes, resolved internal relative-import edges, unresolved internal imports, incoming/outgoing degrees, and strongly connected cycle groups. Third-party packages and imported binding names are intentionally excluded because they are not repository-file edges. Graph construction is bounded to 5,000 files and 50,000 internal import declarations.
+
+The symbol-graph endpoint uses those same ownership, branch, and commit boundaries, then resolves identifiers recorded inside indexed symbols to matching repository definitions. Duplicate names remain explicit: an ambiguous reference links to every matching definition and increments `ambiguousReferences` rather than silently choosing one. The symbol-reference endpoint powers "Where is this used?" queries with definition and usage-site lists. Usage line ranges identify the enclosing function, class, method, route, or other indexed symbol; exact identifier-token positions are not stored. Symbol graphs are bounded to 5,000 files, 10,000 symbols, 100,000 inspected reference names, and 50,000 resolved edges, while a lookup is bounded to 1,000 usage sites.
 
 Request body:
 

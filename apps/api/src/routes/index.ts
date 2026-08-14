@@ -21,6 +21,10 @@ import {
   createRepositoryImportGraphRouter,
   type CreateRepositoryImportGraphRouterOptions,
 } from "./repository-import-graph.routes.js";
+import {
+  createRepositorySymbolGraphRouter,
+  type CreateRepositorySymbolGraphRouterOptions,
+} from "./repository-symbol-graph.routes.js";
 
 export type CreateApiRouterOptions = {
   auth?: CreateAuthRouterOptions;
@@ -28,6 +32,7 @@ export type CreateApiRouterOptions = {
   question?: CreateQuestionRouterOptions;
   repository?: CreateRepositoryRouterOptions;
   repositoryImportGraph?: CreateRepositoryImportGraphRouterOptions;
+  repositorySymbolGraph?: CreateRepositorySymbolGraphRouterOptions;
 };
 
 export function createApiRouter(options: CreateApiRouterOptions = {}): Router {
@@ -37,6 +42,7 @@ export function createApiRouter(options: CreateApiRouterOptions = {}): Router {
   router.use(createGitHubRouter(options.github));
   router.use(createRepositoryRouter(options.repository));
   router.use(createRepositoryImportGraphRouter(options.repositoryImportGraph));
+  router.use(createRepositorySymbolGraphRouter(options.repositorySymbolGraph));
   router.use(createQuestionRouter(options.question));
   return router;
 }
