@@ -50,6 +50,14 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] 19. Add incremental indexing
 - [x] 20. Add evaluations
 
+## Advanced code intelligence
+
+- [x] A1. Add an authorized repository import-graph API
+- [ ] A2. Add a symbol reference graph and "Where is this used?" queries
+- [ ] A3. Add route-controller-service-model flow discovery
+- [ ] A4. Add architecture summaries and Mermaid diagrams
+- [ ] A5. Add dependency exploration and related-file suggestions
+
 ## Production readiness
 
 - [x] P1. Containerize and harden the API and worker
@@ -59,7 +67,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 ## Current state
 
-Production step P1 adds separate multi-stage API and worker container targets, non-root Tini runtimes, an API health check, worker-only Git, a hardened local application Compose profile, and fail-fast production TLS/provider validation. See the [deployment guide](docs/deployment.md).
+Advanced intelligence step A1 adds a repository-isolated import graph built from the exact indexed branch and commit. The backend resolves internal relative imports, reports unresolved links and cycles, calculates file degrees, and rejects oversized graphs. Production step P1 adds separate multi-stage API and worker container targets, non-root Tini runtimes, an API health check, worker-only Git, a hardened local application Compose profile, and fail-fast production TLS/provider validation. See the [deployment guide](docs/deployment.md).
 
 ## Prerequisites
 

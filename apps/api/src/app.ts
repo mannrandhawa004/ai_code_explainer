@@ -22,12 +22,14 @@ import type { GitHubRepositoryServiceContract } from "./services/github-reposito
 import type { GitHubWebhookServiceContract } from "./services/github-webhook.service.js";
 import type { RepositoryQuestionServiceContract } from "./services/repository-question.service.js";
 import type { RepositoryImportServiceContract } from "./services/repository-import.service.js";
+import type { RepositoryImportGraphServiceContract } from "./services/repository-import-graph.service.js";
 
 export type CreateAppOptions = {
   logger?: Logger;
   disableRateLimit?: boolean;
   repositoryQuestionService?: RepositoryQuestionServiceContract;
   repositoryImportService?: RepositoryImportServiceContract;
+  repositoryImportGraphService?: RepositoryImportGraphServiceContract;
   githubAuthService?: GitHubAuthServiceContract;
   githubRepositoryService?: GitHubRepositoryServiceContract;
   githubWebhookService?: GitHubWebhookServiceContract;
@@ -159,6 +161,17 @@ export function createApp(options: CreateAppOptions = {}): Express {
         ...(options.repositoryImportService === undefined
           ? {}
           : { service: options.repositoryImportService }),
+        ...(options.resolveAuthenticatedUserId === undefined
+          ? {}
+          : {
+              resolveAuthenticatedUserId:
+                options.resolveAuthenticatedUserId,
+            }),
+      },
+      repositoryImportGraph: {
+        ...(options.repositoryImportGraphService === undefined
+          ? {}
+          : { service: options.repositoryImportGraphService }),
         ...(options.resolveAuthenticatedUserId === undefined
           ? {}
           : {

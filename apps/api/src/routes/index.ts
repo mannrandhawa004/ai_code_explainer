@@ -17,12 +17,17 @@ import {
   createRepositoryRouter,
   type CreateRepositoryRouterOptions,
 } from "./repository.routes.js";
+import {
+  createRepositoryImportGraphRouter,
+  type CreateRepositoryImportGraphRouterOptions,
+} from "./repository-import-graph.routes.js";
 
 export type CreateApiRouterOptions = {
   auth?: CreateAuthRouterOptions;
   github?: CreateGitHubRouterOptions;
   question?: CreateQuestionRouterOptions;
   repository?: CreateRepositoryRouterOptions;
+  repositoryImportGraph?: CreateRepositoryImportGraphRouterOptions;
 };
 
 export function createApiRouter(options: CreateApiRouterOptions = {}): Router {
@@ -31,6 +36,7 @@ export function createApiRouter(options: CreateApiRouterOptions = {}): Router {
   router.use(createAuthRouter(options.auth));
   router.use(createGitHubRouter(options.github));
   router.use(createRepositoryRouter(options.repository));
+  router.use(createRepositoryImportGraphRouter(options.repositoryImportGraph));
   router.use(createQuestionRouter(options.question));
   return router;
 }
