@@ -33,6 +33,7 @@ POST /api/github/webhook
 POST /api/repositories/import
 POST /api/repositories/:id/index
 GET /api/repositories/:id/status
+GET /api/repositories/:id/import-graph
 POST /api/repositories/:id/index/cancel
 POST /api/repositories/:id/chat
 ```
@@ -60,6 +61,8 @@ GitHub access and refresh tokens are encrypted with AES-256-GCM and excluded fro
 The webhook endpoint is mounted before the normal JSON parser so `X-Hub-Signature-256` is checked against the exact raw UTF-8 body. It accepts only `application/json`, bounds payload size, validates GitHub delivery headers, and reduces supported events to strict queue data. `X-GitHub-Delivery` becomes the BullMQ job ID for replay protection; completed and failed deliveries are retained for 30 days. The API enforces an enqueue deadline below GitHub's ten-second response limit. Unsupported actions and events are safely acknowledged and ignored.
 
 The chat endpoint validates a server-authenticated user, checks repository ownership and indexing status before provider calls, retrieves only the repository's current tenant/branch/commit vectors, generates a grounded response, and persists the exchange with model, usage, and latency metadata. Authentication is fail-closed until an authentication middleware supplies `response.locals.authenticatedUserId`; request body fields and unverified headers are never accepted as identity.
+
+The import-graph endpoint is available only after indexing is complete. It loads file metadata for the authenticated user's repository, selected branch, and exact indexed commit, then returns deterministic file nodes, resolved internal relative-import edges, unresolved internal imports, incoming/outgoing degrees, and strongly connected cycle groups. Third-party packages and imported binding names are intentionally excluded because they are not repository-file edges. Graph construction is bounded to 5,000 files and 50,000 internal import declarations.
 
 Request body:
 
