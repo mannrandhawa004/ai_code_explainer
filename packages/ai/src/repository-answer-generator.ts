@@ -385,15 +385,17 @@ function parseStructuredAnswer(outputText: string): StructuredAnswerSegment[] {
       /\[(?:S\d+|[^\]\r\n]+:L\d+-L\d+)\]/u.test(text) ||
       !Array.isArray(sourceIds) ||
       sourceIds.length === 0 ||
-      sourceIds.some((sourceId) => typeof sourceId !== "string") ||
-      new Set(sourceIds).size !== sourceIds.length
+      sourceIds.some((sourceId) => typeof sourceId !== "string")
     ) {
       throw new RepositoryAnswerError(
         "INVALID_RESPONSE",
         "Answer provider returned an invalid answer segment",
       );
     }
-    segments.push({ text: text.trim(), sourceIds: sourceIds as string[] });
+    segments.push({
+      text: text.trim(),
+      sourceIds: [...new Set(sourceIds as string[])],
+    });
   }
 
   return segments;
