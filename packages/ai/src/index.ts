@@ -62,6 +62,7 @@ export {
   createOllamaEmbeddingGeneratorFromEnv,
   createOllamaRepositoryAnswerGeneratorFromEnv,
   defaultOllamaChatModel,
+  defaultOllamaContextTokens,
   defaultOllamaEmbeddingDimensions,
   defaultOllamaEmbeddingModel,
   defaultOllamaKeepAlive,

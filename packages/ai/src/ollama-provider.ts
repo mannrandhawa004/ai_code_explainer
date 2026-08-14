@@ -20,14 +20,16 @@ import {
 export const defaultOllamaUrl = "http://localhost:11434";
 export const defaultOllamaEmbeddingModel = "qwen3-embedding:0.6b";
 export const defaultOllamaEmbeddingDimensions = 1_024;
-export const defaultOllamaChatModel = "qwen2.5-coder:3b";
+export const defaultOllamaChatModel = "qwen2.5-coder:0.5b";
 export const defaultOllamaRequestTimeoutMs = 300_000;
-export const defaultOllamaKeepAlive = "10m";
+export const defaultOllamaKeepAlive = "2m";
+export const defaultOllamaContextTokens = 4_096;
 
 export type OllamaProviderConfig = {
   baseUrl?: string;
   timeoutMs?: number;
   keepAlive?: string;
+  contextTokens?: number;
   fetchImplementation?: typeof fetch;
 };
 
@@ -127,6 +129,7 @@ class OllamaHttpClient {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
   private readonly keepAlive: string;
+  readonly contextTokens: number;
   private readonly fetchImplementation: typeof fetch;
 
   constructor(config: OllamaProviderConfig = {}) {
@@ -169,6 +172,8 @@ class OllamaHttpClient {
         false,
       );
     }
+    this.contextTokens = config.contextTokens ?? defaultOllamaContextTokens;
+    assertPositiveInteger(this.contextTokens, "OLLAMA_CONTEXT_TOKENS");
     this.fetchImplementation = config.fetchImplementation ?? fetch;
   }
 
@@ -360,7 +365,11 @@ export class OllamaAnswerProvider implements AnswerProvider {
         ],
         format: request.outputSchema,
         stream: false,
-        options: { temperature: 0, num_predict: request.maxOutputTokens },
+        options: {
+          temperature: 0,
+          num_ctx: this.client.contextTokens,
+          num_predict: request.maxOutputTokens,
+        },
       },
       options.signal,
     );
@@ -423,6 +432,11 @@ function providerConfigFromEnv(
       defaultOllamaRequestTimeoutMs,
     ),
     keepAlive: environment.OLLAMA_KEEP_ALIVE?.trim() || defaultOllamaKeepAlive,
+    contextTokens: readPositiveInteger(
+      environment,
+      "OLLAMA_CONTEXT_TOKENS",
+      defaultOllamaContextTokens,
+    ),
   };
 }
 
@@ -444,7 +458,7 @@ export function createOllamaEmbeddingGeneratorFromEnv(
       batchSize: readPositiveInteger(
         environment,
         "OLLAMA_EMBEDDING_BATCH_SIZE",
-        16,
+        4,
       ),
       requestConcurrency: readPositiveInteger(
         environment,
@@ -454,12 +468,12 @@ export function createOllamaEmbeddingGeneratorFromEnv(
       maxInputTokens: readPositiveInteger(
         environment,
         "OLLAMA_EMBEDDING_MAX_INPUT_TOKENS",
-        8_192,
+        2_048,
       ),
       maxRequestTokens: readPositiveInteger(
         environment,
         "OLLAMA_EMBEDDING_MAX_REQUEST_TOKENS",
-        65_536,
+        8_192,
       ),
     },
   );
@@ -475,17 +489,17 @@ export function createOllamaRepositoryAnswerGeneratorFromEnv(
       maxOutputTokens: readPositiveInteger(
         environment,
         "OLLAMA_ANSWER_MAX_OUTPUT_TOKENS",
-        2_000,
+        800,
       ),
       maxContextCharacters: readPositiveInteger(
         environment,
         "OLLAMA_MAX_CONTEXT_CHARACTERS",
-        60_000,
+        12_000,
       ),
       maxHistoryCharacters: readPositiveInteger(
         environment,
         "OLLAMA_MAX_HISTORY_CHARACTERS",
-        12_000,
+        3_000,
       ),
     },
   );

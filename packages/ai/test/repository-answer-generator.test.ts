@@ -243,11 +243,30 @@ describe("RepositoryAnswerGenerator", () => {
     });
   });
 
+  it("deduplicates repeated valid source IDs", async () => {
+    const generator = new RepositoryAnswerGenerator(
+      createProvider(async () => ({
+        responseId: "response-duplicate-citation",
+        outputText: output({
+          text: "Authentication uses the middleware.",
+          sourceIds: ["S1", "S1"],
+        }),
+        model: defaultAnswerModel,
+        status: "completed",
+        usage,
+      })),
+    );
+
+    await expect(generator.generate(createRequest())).resolves.toMatchObject({
+      answer: "Authentication uses the middleware. [src/auth.ts:L10-L20]",
+      sources: [{ filePath: "src/auth.ts", startLine: 10, endLine: 20 }],
+    });
+  });
+
   it.each([
     ["malformed JSON", "not JSON"],
     ["an unknown source", output({ text: "Answer", sourceIds: ["S99"] })],
     ["no source", output({ text: "Answer", sourceIds: [] })],
-    ["duplicate sources", output({ text: "Answer", sourceIds: ["S1", "S1"] })],
     ["a model-written marker", output({ text: "Answer [S1]", sourceIds: ["S1"] })],
     [
       "a model-written file citation",

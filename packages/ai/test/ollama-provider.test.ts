@@ -59,7 +59,7 @@ describe("Ollama providers", () => {
   it("requests schema-constrained local chat and returns token usage", async () => {
     const fetchImplementation = vi.fn(async () =>
       jsonResponse({
-        model: "qwen2.5-coder:3b",
+        model: "qwen2.5-coder:0.5b",
         message: {
           role: "assistant",
           content: '{"segments":[{"text":"Ready","sourceIds":["S1"]}]}',
@@ -76,7 +76,7 @@ describe("Ollama providers", () => {
     };
 
     const result = await provider.createAnswer({
-      model: "qwen2.5-coder:3b",
+      model: "qwen2.5-coder:0.5b",
       instructions: "Use only the supplied source.",
       input: "Explain this code.",
       maxOutputTokens: 500,
@@ -87,7 +87,7 @@ describe("Ollama providers", () => {
     expect(result).toMatchObject({
       outputText:
         '{"segments":[{"text":"Ready","sourceIds":["S1"]}]}',
-      model: "qwen2.5-coder:3b",
+      model: "qwen2.5-coder:0.5b",
       status: "completed",
       usage: {
         inputTokens: 40,
@@ -102,10 +102,10 @@ describe("Ollama providers", () => {
       String(vi.mocked(fetchImplementation).mock.calls[0]?.[1]?.body),
     ) as Record<string, unknown>;
     expect(request).toMatchObject({
-      model: "qwen2.5-coder:3b",
+      model: "qwen2.5-coder:0.5b",
       format: outputSchema,
       stream: false,
-      options: { temperature: 0, num_predict: 500 },
+      options: { temperature: 0, num_ctx: 4_096, num_predict: 500 },
     });
   });
 

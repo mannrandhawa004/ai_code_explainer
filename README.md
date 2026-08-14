@@ -92,4 +92,39 @@ The embedding model and Qdrant dimensions must match. A separate collection name
 
 Google currently offers free-tier text embedding and Flash-Lite usage, subject to account and rate limits. Google states that free-tier content may be used to improve its products, so use public/sample repositories for learning unless that data policy is acceptable. For private or sensitive code, use an appropriate paid account and review its current data-use terms.
 
+## Low-resource local AI with Ollama
+
+The Ollama profile is tuned for an 8 GB CPU-only development machine. Install Ollama on Windows, then download only the small embedding and chat models:
+
+```powershell
+ollama pull qwen3-embedding:0.6b
+ollama pull qwen2.5-coder:0.5b
+```
+
+Select the local provider with matching Qdrant dimensions and a provider-specific collection:
+
+```dotenv
+AI_PROVIDER=ollama
+OLLAMA_URL=http://localhost:11434
+OLLAMA_DOCKER_URL=http://host.docker.internal:11434
+OLLAMA_EMBEDDING_MODEL=qwen3-embedding:0.6b
+OLLAMA_EMBEDDING_DIMENSIONS=1024
+OLLAMA_CHAT_MODEL=qwen2.5-coder:0.5b
+OLLAMA_KEEP_ALIVE=2m
+OLLAMA_CONTEXT_TOKENS=4096
+OLLAMA_ANSWER_MAX_OUTPUT_TOKENS=800
+OLLAMA_MAX_CONTEXT_CHARACTERS=12000
+OLLAMA_MAX_HISTORY_CHARACTERS=3000
+OLLAMA_EMBEDDING_BATCH_SIZE=4
+OLLAMA_EMBEDDING_REQUEST_CONCURRENCY=1
+OLLAMA_EMBEDDING_MAX_INPUT_TOKENS=2048
+OLLAMA_EMBEDDING_MAX_REQUEST_TOKENS=8192
+QDRANT_COLLECTION=code_chunks_ollama_qwen3_1024
+QDRANT_VECTOR_SIZE=1024
+INDEXING_CONCURRENCY=1
+INDEXING_MAX_ATTEMPTS=1
+```
+
+`OLLAMA_URL` serves backend processes started directly on Windows. The Compose application containers automatically use `OLLAMA_DOCKER_URL` to reach Ollama on the host. The short keep-alive releases model memory after inactivity, and Ollama should be configured with one loaded model and one parallel request on an 8 GB machine. Expect slower answers and lower reasoning quality than Gemini; use small repositories while testing. Reindex repositories into the Ollama collection after changing providers because vectors from different embedding models are not interchangeable.
+
 The repository page polls its `/status` endpoint while indexing, so repeated status requests in browser DevTools are expected and do not start new indexing runs. Queue attempts are set to one in the local example; the Retry Indexing button remains available. Provider quota and credential failures do not automatically restart the clone pipeline.
