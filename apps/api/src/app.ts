@@ -26,6 +26,7 @@ import type { RepositoryImportGraphServiceContract } from "./services/repository
 import type { RepositorySymbolGraphServiceContract } from "./services/repository-symbol-graph.service.js";
 import type { RepositoryApplicationFlowServiceContract } from "./services/repository-application-flow.service.js";
 import type { RepositoryArchitectureServiceContract } from "./services/repository-architecture.service.js";
+import type { RepositoryDependencyExplorationServiceContract } from "./services/repository-dependency-exploration.service.js";
 
 export type CreateAppOptions = {
   logger?: Logger;
@@ -36,6 +37,7 @@ export type CreateAppOptions = {
   repositorySymbolGraphService?: RepositorySymbolGraphServiceContract;
   repositoryApplicationFlowService?: RepositoryApplicationFlowServiceContract;
   repositoryArchitectureService?: RepositoryArchitectureServiceContract;
+  repositoryDependencyExplorationService?: RepositoryDependencyExplorationServiceContract;
   githubAuthService?: GitHubAuthServiceContract;
   githubRepositoryService?: GitHubRepositoryServiceContract;
   githubWebhookService?: GitHubWebhookServiceContract;
@@ -211,6 +213,17 @@ export function createApp(options: CreateAppOptions = {}): Express {
         ...(options.repositoryArchitectureService === undefined
           ? {}
           : { service: options.repositoryArchitectureService }),
+        ...(options.resolveAuthenticatedUserId === undefined
+          ? {}
+          : {
+              resolveAuthenticatedUserId:
+                options.resolveAuthenticatedUserId,
+            }),
+      },
+      repositoryDependencyExploration: {
+        ...(options.repositoryDependencyExplorationService === undefined
+          ? {}
+          : { service: options.repositoryDependencyExplorationService }),
         ...(options.resolveAuthenticatedUserId === undefined
           ? {}
           : {
