@@ -87,6 +87,8 @@ Both backend services fail fast unless MongoDB uses `mongodb+srv://` or explicit
 | `GITHUB_CALLBACK_URL` | Yes | No | Exact HTTPS API callback URL. |
 | `JWT_SECRET` / `ENCRYPTION_KEY` | Yes | No | Session signing and stored-token encryption. |
 | `TEMP_REPOSITORY_DIR` | No | Yes | Use ephemeral storage; default is `/tmp/codebase-explainer`. |
+| `METRICS_BEARER_TOKEN` | Yes | Yes | Shared high-entropy scrape credential; at least 32 characters when metrics are enabled. |
+| `WORKER_METRICS_HOST` / `WORKER_METRICS_PORT` | No | Yes | Bind the worker health/metrics server; default container port is `9464`. |
 
 The platform must preserve literal newlines in `GITHUB_PRIVATE_KEY`, or store them as `\n` sequences as documented in `.env.example`. Never place secrets in Docker build arguments, image layers, repository files, frontend variables, or logs.
 
@@ -104,14 +106,18 @@ GET /api/health/qdrant
 
 Use the lightweight liveness endpoint for automatic restarts; a temporary managed-service outage should not create an API restart loop. Alert on the dependency endpoints instead.
 
-The worker has no public port. Its container process staying alive is the liveness signal; queue depth, completed/failed job events, and log alerts provide readiness and workload health. Set the platform termination grace period above `WORKER_SHUTDOWN_TIMEOUT_MS` so an active indexing phase can stop safely. The API needs at least 15 seconds; the worker default should receive at least 45 seconds.
+The worker image exposes port `9464` for operational traffic. Configure its liveness probe as `GET /health`; keep this port private to the platform network and allow only the metrics collector to call `GET /metrics`. The Compose profile publishes it on loopback for local testing. If `WORKER_METRICS_ENABLED=false`, the metrics server and its HTTP liveness endpoint are disabled, so use process liveness instead.
+
+Both metrics endpoints require `Authorization: Bearer <METRICS_BEARER_TOKEN>` in production. Scrape them from the private service network and never expose them through the public frontend or API gateway. Queue depth is collected by the API; job outcomes, indexing duration, and webhook failures are collected by the worker. See the [observability guide](observability.md) for the metric catalog and alert examples.
+
+Set the platform termination grace period above `WORKER_SHUTDOWN_TIMEOUT_MS` so an active indexing phase can stop safely. The API needs at least 15 seconds; the worker default should receive at least 45 seconds.
 
 ## Release order and smoke checks
 
 1. Build both backend images from one immutable commit and scan them in CI.
 2. Deploy the worker with zero replicas or paused consumption when a data migration requires it. This project currently has no separate migration command; MongoDB validation and Qdrant collection checks happen at runtime.
-3. Deploy the API and confirm `/api/health` plus all three dependency endpoints.
-4. Start or resume worker replicas and confirm they connect to both BullMQ queues.
+3. Deploy the API and confirm `/api/health`, all three dependency endpoints, and an authenticated `/api/metrics` scrape.
+4. Start or resume worker replicas and confirm `/health`, authenticated `/metrics`, and connections to both BullMQ queues.
 5. Deploy the frontend with the final API origin.
 6. Update the GitHub App callback and webhook URLs, then verify one signed delivery.
 7. Import a small test repository, wait for indexing, ask a known evaluation question, and confirm its file/line citation.

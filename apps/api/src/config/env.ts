@@ -7,6 +7,19 @@ const optionalTrimmedString = z
   .optional()
   .transform((value) => value?.trim() || undefined);
 
+const booleanEnvironmentValue = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+  if (value.toLowerCase() === "true") {
+    return true;
+  }
+  if (value.toLowerCase() === "false") {
+    return false;
+  }
+  return value;
+}, z.boolean());
+
 function usesSecureMongoTransport(value: string): boolean {
   if (value.toLowerCase().startsWith("mongodb+srv://")) {
     return true;
@@ -114,6 +127,8 @@ const envSchema = z.object({
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
+  METRICS_ENABLED: booleanEnvironmentValue.default(true),
+  METRICS_BEARER_TOKEN: optionalTrimmedString,
   API_JSON_LIMIT: z.string().min(1).default("1mb"),
   API_RATE_LIMIT_WINDOW_MS: z.coerce
     .number()
@@ -266,6 +281,14 @@ export function parseApiEnvironment(
     }
     if (!parsed.GITHUB_WEBHOOK_SECRET) {
       throw new Error("GITHUB_WEBHOOK_SECRET must be configured in production");
+    }
+    if (
+      parsed.METRICS_ENABLED &&
+      (parsed.METRICS_BEARER_TOKEN?.length ?? 0) < 32
+    ) {
+      throw new Error(
+        "METRICS_BEARER_TOKEN must contain at least 32 characters in production",
+      );
     }
   }
 

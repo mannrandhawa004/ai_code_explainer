@@ -18,6 +18,13 @@ export type GitHubWebhookEnqueueResult = {
   status: GitHubWebhookEnqueueStatus;
 };
 
+export type GitHubWebhookOperationalQueueCounts = {
+  waiting: number;
+  active: number;
+  delayed: number;
+  failed: number;
+};
+
 export class GitHubWebhookQueueError extends Error {
   override readonly name = "GitHubWebhookQueueError";
 
@@ -104,6 +111,22 @@ export class BullMqGitHubWebhookQueue implements GitHubWebhookQueueContract {
         { cause },
       );
     }
+  }
+
+  async getOperationalCounts(): Promise<GitHubWebhookOperationalQueueCounts> {
+    await this.ensureConnected();
+    const counts = await this.queue.getJobCounts(
+      "waiting",
+      "active",
+      "delayed",
+      "failed",
+    );
+    return {
+      waiting: counts.waiting ?? 0,
+      active: counts.active ?? 0,
+      delayed: counts.delayed ?? 0,
+      failed: counts.failed ?? 0,
+    };
   }
 
   close(): Promise<void> {

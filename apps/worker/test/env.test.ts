@@ -13,6 +13,7 @@ const secureProductionEnvironment: NodeJS.ProcessEnv = {
   OPENAI_API_KEY: "openai-test-key",
   GITHUB_APP_ID: "123456",
   GITHUB_PRIVATE_KEY: "test-private-key",
+  METRICS_BEARER_TOKEN: "m".repeat(32),
 };
 
 describe("worker environment", () => {
@@ -24,6 +25,25 @@ describe("worker environment", () => {
     expect(result.MAX_REPOSITORY_FILES).toBe(5_000);
     expect(result.GITHUB_WEBHOOK_CONCURRENCY).toBe(1);
     expect(result.INDEXING_MAX_ATTEMPTS).toBe(1);
+    expect(result.WORKER_METRICS_ENABLED).toBe(true);
+    expect(result.WORKER_METRICS_PORT).toBe(9_464);
+  });
+
+  it("requires a metrics token when production worker metrics are enabled", () => {
+    expect(() =>
+      parseWorkerEnvironment({
+        ...secureProductionEnvironment,
+        METRICS_BEARER_TOKEN: "short",
+      }),
+    ).toThrow("METRICS_BEARER_TOKEN must contain at least 32 characters");
+
+    expect(
+      parseWorkerEnvironment({
+        ...secureProductionEnvironment,
+        WORKER_METRICS_ENABLED: "false",
+        METRICS_BEARER_TOKEN: "",
+      }).WORKER_METRICS_ENABLED,
+    ).toBe(false);
   });
 
   it("requires an encrypted Redis connection in production", () => {

@@ -61,13 +61,13 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 ## Production readiness
 
 - [x] P1. Containerize and harden the API and worker
-- [ ] P2. Add production observability and operational metrics
+- [x] P2. Add production observability and operational metrics
 - [ ] P3. Add CI release, image scanning, and deployment automation
 - [ ] P4. Run staging load, failure-recovery, and live evaluation gates
 
 ## Current state
 
-Advanced intelligence steps A1-A5 add repository-isolated import, symbol-reference, application-flow, architecture-summary, and dependency-exploration APIs built from the exact indexed branch and commit. The backend resolves internal relative imports, reports unresolved links and cycles, connects enclosing symbols to matching definitions, preserves ambiguous names, supports bounded "Where is this used?" lookups, derives route-controller-service-model paths, produces escaped Mermaid diagrams, explores dependency neighbourhoods, and ranks related files with explicit import, symbol, and flow reasons—all without an AI-provider call. Production step P1 adds separate multi-stage API and worker container targets, non-root Tini runtimes, an API health check, worker-only Git, a hardened local application Compose profile, and fail-fast production TLS/provider validation. See the [deployment guide](docs/deployment.md).
+Advanced intelligence steps A1-A5 add repository-isolated import, symbol-reference, application-flow, architecture-summary, and dependency-exploration APIs built from the exact indexed branch and commit. The backend resolves internal relative imports, reports unresolved links and cycles, connects enclosing symbols to matching definitions, preserves ambiguous names, supports bounded "Where is this used?" lookups, derives route-controller-service-model paths, produces escaped Mermaid diagrams, explores dependency neighbourhoods, and ranks related files with explicit import, symbol, and flow reasons—all without an AI-provider call. Production steps P1-P2 add separate hardened API and worker containers, health checks, fail-fast production configuration, structured Pino logs, and bearer-protected Prometheus metrics for HTTP traffic, errors, queues, worker jobs, dependencies, AI calls, and token usage. See the [deployment guide](docs/deployment.md) and [observability guide](docs/observability.md).
 
 ## Prerequisites
 

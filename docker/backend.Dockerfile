@@ -104,7 +104,13 @@ RUN apt-get update \
     && apt-get install --yes --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
-ENV TEMP_REPOSITORY_DIR=/tmp/codebase-explainer
+ENV TEMP_REPOSITORY_DIR=/tmp/codebase-explainer \
+    WORKER_METRICS_HOST=0.0.0.0 \
+    WORKER_METRICS_PORT=9464
+EXPOSE 9464
 USER node
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["node", "-e", "if (process.env.WORKER_METRICS_ENABLED === 'false') process.exit(0); fetch('http://127.0.0.1:' + (process.env.WORKER_METRICS_PORT || '9464') + '/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
 
 CMD ["node", "apps/worker/dist/index.js"]

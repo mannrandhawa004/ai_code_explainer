@@ -20,6 +20,7 @@ import {
   RepositoryIndexingError,
   type IndexingJobContract,
 } from "./jobs/repository-indexing.processor.js";
+import type { WorkerMetricsObserver } from "./observability/worker-metrics.js";
 
 export interface RepositoryIndexingProcessorContract {
   process(
@@ -36,7 +37,20 @@ export type CreateRepositoryIndexingWorkerOptions = {
   logger?: Logger;
   autorun?: boolean;
   prefix?: string;
+  metrics?: WorkerMetricsObserver;
 };
+
+function durationSeconds(job: Job<RepositoryIndexingJobData> | undefined): number {
+  return Math.max(0, (Date.now() - (job?.processedOn ?? Date.now())) / 1_000);
+}
+
+function reportMetric(report: () => void): void {
+  try {
+    report();
+  } catch {
+    // Worker processing must not depend on metric collection.
+  }
+}
 
 function maximumAttempts(job: Job<RepositoryIndexingJobData>): number {
   const attempts = job.opts.attempts ?? 1;
@@ -104,7 +118,17 @@ export function createRepositoryIndexingWorker(
     workerOptions,
   );
 
+  worker.on("active", () => {
+    reportMetric(() => options.metrics?.recordJobStarted("indexing"));
+  });
   worker.on("completed", (job, result) => {
+    reportMetric(() =>
+      options.metrics?.recordJobCompleted(
+        "indexing",
+        durationSeconds(job),
+        result,
+      ),
+    );
     log.info(
       {
         jobId: job.id,
@@ -116,6 +140,9 @@ export function createRepositoryIndexingWorker(
     );
   });
   worker.on("failed", (job, error) => {
+    reportMetric(() =>
+      options.metrics?.recordJobFailed("indexing", durationSeconds(job)),
+    );
     log.warn(
       {
         error,
@@ -127,9 +154,11 @@ export function createRepositoryIndexingWorker(
     );
   });
   worker.on("stalled", (jobId) => {
+    reportMetric(() => options.metrics?.recordJobStalled("indexing"));
     log.warn({ jobId }, "Repository indexing job stalled");
   });
   worker.on("error", (error) => {
+    reportMetric(() => options.metrics?.recordWorkerError("indexing"));
     log.error({ error }, "Repository indexing worker error");
   });
 

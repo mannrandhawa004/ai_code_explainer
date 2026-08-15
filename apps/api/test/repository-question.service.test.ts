@@ -8,6 +8,7 @@ import {
   type RepositoryQuestionRepositoryGateway,
   type RepositoryQuestionServiceDependencies,
 } from "../src/services/repository-question.service.js";
+import type { ApiMetricsObserver } from "../src/observability/api-metrics.js";
 
 const repository = {
   id: "aaaaaaaaaaaaaaaaaaaaaaaa",
@@ -177,6 +178,46 @@ describe("RepositoryQuestionService", () => {
           "Authentication uses the authenticate function. [src/auth.ts:L1-L3]",
         sources: answerSources,
         usage: answerUsage,
+      }),
+    );
+  });
+
+  it("reports low-cardinality dependency, AI, and token metrics", async () => {
+    const metrics: ApiMetricsObserver = {
+      observeDependency: vi.fn(),
+      observeAi: vi.fn(),
+    };
+    const dependencies = createDependencies({ metrics });
+
+    await new RepositoryQuestionService(dependencies).ask(questionInput);
+
+    expect(metrics.observeDependency).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dependency: "mongodb",
+        operation: "repository_lookup",
+        outcome: "success",
+      }),
+    );
+    expect(metrics.observeDependency).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dependency: "qdrant",
+        operation: "retrieval",
+        outcome: "success",
+      }),
+    );
+    expect(metrics.observeAi).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: "embedding",
+        outcome: "success",
+        embeddingRequests: 1,
+        embeddingTokens: 8,
+      }),
+    );
+    expect(metrics.observeAi).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: "generation",
+        outcome: "success",
+        answerUsage,
       }),
     );
   });
