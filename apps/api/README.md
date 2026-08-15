@@ -21,6 +21,7 @@ GET /api/health
 GET /api/health/database
 GET /api/health/qdrant
 GET /api/health/redis
+GET /api/metrics
 GET /api/auth/github
 GET /api/auth/github/callback
 POST /api/auth/logout
@@ -77,6 +78,8 @@ The application-flow endpoint derives route-controller-service-model paths from 
 The architecture endpoint combines the import, symbol, and application-flow results only when all three describe the same authenticated repository, branch, and indexed commit. It returns deterministic metrics, language counts, route entry points, dependency hubs, and explicit risks for unresolved imports, cycles, ambiguity, incomplete flows, or truncated output. It also returns import and application-flow Mermaid source with generated node IDs and escaped repository-derived labels. Each diagram is bounded to 100 nodes and 200 edges, so rendering does not require an AI provider or consume API credits.
 
 The dependencies endpoint explores one exact indexed file through outgoing imports, incoming dependents, or both directions. `direction` defaults to `both`, `depth` defaults to 2 and is capped at 4, and responses are bounded to 250 files and 500 edges with an explicit `truncated` flag. The related-files endpoint combines direct and second-degree imports, reverse dependents, shared dependencies, cross-file symbol references, and discovered application flows. Suggestions have deterministic scores and return every scoring reason; the default limit is 10 and the maximum is 50. Both endpoints use the authenticated repository's current indexed branch and commit and make no AI-provider request.
+
+The Prometheus endpoint reports bounded-label HTTP, API error, MongoDB/Qdrant/Redis latency, BullMQ depth, AI request, and token metrics. Set `METRICS_BEARER_TOKEN` and send it as an `Authorization: Bearer ...` header; production requires a token of at least 32 characters while metrics are enabled. Metrics collection is fail-open for application requests, and repository IDs, user IDs, file paths, and questions are never labels. See the root [observability guide](../../docs/observability.md).
 
 Request body:
 

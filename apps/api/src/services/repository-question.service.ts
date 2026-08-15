@@ -23,6 +23,12 @@ import {
 
 import { env } from "../config/env.js";
 import { vectorStoreConfig } from "../config/vector-store.js";
+import {
+  getDefaultApiMetrics,
+  type ApiAiOperation,
+  type ApiDependency,
+  type ApiMetricsObserver,
+} from "../observability/api-metrics.js";
 
 export const repositoryQuestionNoContextAnswer =
   "I could not find enough relevant evidence in the indexed repository to answer that question.";
@@ -162,6 +168,7 @@ export type RepositoryQuestionServiceDependencies = {
   searchLimit?: number;
   scoreThreshold?: number;
   now?: () => number;
+  metrics?: ApiMetricsObserver;
 };
 
 export type RepositoryQuestionErrorCode =
@@ -264,9 +271,14 @@ export class RepositoryQuestionService
 
     let repository: RepositoryQuestionRecord | null;
     try {
-      repository = await this.dependencies.repositories.findOwnedRepository(
-        input.repositoryId,
-        input.authenticatedUserId,
+      repository = await this.observeDependency(
+        "mongodb",
+        "repository_lookup",
+        () =>
+          this.dependencies.repositories.findOwnedRepository(
+            input.repositoryId,
+            input.authenticatedUserId,
+          ),
       );
     } catch (error) {
       throw new RepositoryQuestionError(
@@ -287,17 +299,23 @@ export class RepositoryQuestionService
         "Repository indexing is not complete",
       );
     }
+    const indexedCommit = repository.lastIndexedCommit;
 
     let loadedConversation: LoadedConversation | undefined;
     if (input.conversationId !== undefined) {
       try {
         loadedConversation =
-          (await this.dependencies.conversations.loadOwnedConversation({
-            conversationId: input.conversationId,
-            authenticatedUserId: input.authenticatedUserId,
-            repositoryId: repository.id,
-            branch: repository.selectedBranch,
-          })) ?? undefined;
+          (await this.observeDependency(
+            "mongodb",
+            "conversation_load",
+            () =>
+              this.dependencies.conversations.loadOwnedConversation({
+                conversationId: input.conversationId as string,
+                authenticatedUserId: input.authenticatedUserId,
+                repositoryId: repository.id,
+                branch: repository.selectedBranch,
+              }),
+          )) ?? undefined;
       } catch (error) {
         throw new RepositoryQuestionError(
           "CONVERSATION_ACCESS_FAILED",
@@ -316,10 +334,18 @@ export class RepositoryQuestionService
     const category = classifyRepositoryQuestion(question);
     let embedding: QuestionEmbedding;
     try {
-      embedding = await this.dependencies.embedder.embed(question, {
-        endUserId: input.authenticatedUserId,
-        ...(input.signal === undefined ? {} : { signal: input.signal }),
-      });
+      embedding = await this.observeAi(
+        "embedding",
+        () =>
+          this.dependencies.embedder.embed(question, {
+            endUserId: input.authenticatedUserId,
+            ...(input.signal === undefined ? {} : { signal: input.signal }),
+          }),
+        (result) => ({
+          embeddingRequests: result.usage.requests,
+          embeddingTokens: result.usage.totalTokens,
+        }),
+      );
     } catch (error) {
       assertNotAborted(input.signal);
       throw new RepositoryQuestionError(
@@ -335,26 +361,27 @@ export class RepositoryQuestionService
         userId: repository.userId,
         repositoryId: repository.id,
         branch: repository.selectedBranch,
-        commitSha: repository.lastIndexedCommit,
+        commitSha: indexedCommit,
         ...(this.dependencies.searchLimit === undefined
           ? {}
           : { limit: this.dependencies.searchLimit }),
         ...(input.signal === undefined ? {} : { signal: input.signal }),
       };
-      const semanticSearch = this.dependencies.retriever.search({
-        vector: embedding.vector,
-        ...repositoryScope,
-        ...(this.dependencies.scoreThreshold === undefined
-          ? {}
-          : { scoreThreshold: this.dependencies.scoreThreshold }),
-      });
-      const exactSymbolName =
-        category === "exact_symbol"
-          ? extractExactSymbolName(question)
-          : undefined;
-      if (exactSymbolName === undefined) {
-        chunks = await semanticSearch;
-      } else {
+      chunks = await this.observeDependency("qdrant", "retrieval", async () => {
+        const semanticSearch = this.dependencies.retriever.search({
+          vector: embedding.vector,
+          ...repositoryScope,
+          ...(this.dependencies.scoreThreshold === undefined
+            ? {}
+            : { scoreThreshold: this.dependencies.scoreThreshold }),
+        });
+        const exactSymbolName =
+          category === "exact_symbol"
+            ? extractExactSymbolName(question)
+            : undefined;
+        if (exactSymbolName === undefined) {
+          return semanticSearch;
+        }
         const [semanticMatches, exactMatches] = await Promise.all([
           semanticSearch,
           this.dependencies.retriever.searchExactSymbol({
@@ -362,12 +389,12 @@ export class RepositoryQuestionService
             ...repositoryScope,
           }),
         ]);
-        chunks = mergeRetrievedChunks(
+        return mergeRetrievedChunks(
           exactMatches,
           semanticMatches,
           this.dependencies.searchLimit,
         );
-      }
+      });
     } catch (error) {
       assertNotAborted(input.signal);
       throw new RepositoryQuestionError(
@@ -385,19 +412,24 @@ export class RepositoryQuestionService
 
     if (chunks.length > 0) {
       try {
-        const generated = await this.dependencies.answerer.generate({
-          userId: repository.userId,
-          repositoryName: repository.fullName,
-          branch: repository.selectedBranch,
-          commitSha: repository.lastIndexedCommit,
-          question,
-          category,
-          sources: chunks.map(toAnswerSource),
-          ...(loadedConversation === undefined
-            ? {}
-            : { history: loadedConversation.history }),
-          ...(input.signal === undefined ? {} : { signal: input.signal }),
-        });
+        const generated = await this.observeAi(
+          "generation",
+          () =>
+            this.dependencies.answerer.generate({
+              userId: repository.userId,
+              repositoryName: repository.fullName,
+              branch: repository.selectedBranch,
+              commitSha: indexedCommit,
+              question,
+              category,
+              sources: chunks.map(toAnswerSource),
+              ...(loadedConversation === undefined
+                ? {}
+                : { history: loadedConversation.history }),
+              ...(input.signal === undefined ? {} : { signal: input.signal }),
+            }),
+          (result) => ({ answerUsage: result.usage }),
+        );
         answer = generated.answer;
         sources = generated.sources;
         model = generated.model;
@@ -417,23 +449,28 @@ export class RepositoryQuestionService
     const latencyMs = Math.max(0, this.now() - startedAt);
     let persisted: PersistQuestionExchangeResult;
     try {
-      persisted = await this.dependencies.conversations.persistExchange({
-        ...(loadedConversation === undefined
-          ? {}
-          : { conversationId: loadedConversation.id }),
-        authenticatedUserId: input.authenticatedUserId,
-        repositoryId: repository.id,
-        branch: repository.selectedBranch,
-        question,
-        answer,
-        sources,
-        ...(model === undefined ? {} : { model }),
-        ...(providerResponseId === undefined
-          ? {}
-          : { providerResponseId }),
-        usage,
-        latencyMs,
-      });
+      persisted = await this.observeDependency(
+        "mongodb",
+        "conversation_persist",
+        () =>
+          this.dependencies.conversations.persistExchange({
+            ...(loadedConversation === undefined
+              ? {}
+              : { conversationId: loadedConversation.id }),
+            authenticatedUserId: input.authenticatedUserId,
+            repositoryId: repository.id,
+            branch: repository.selectedBranch,
+            question,
+            answer,
+            sources,
+            ...(model === undefined ? {} : { model }),
+            ...(providerResponseId === undefined
+              ? {}
+              : { providerResponseId }),
+            usage,
+            latencyMs,
+          }),
+      );
     } catch (error) {
       throw new RepositoryQuestionError(
         "PERSISTENCE_FAILED",
@@ -451,7 +488,7 @@ export class RepositoryQuestionService
       sources,
       category,
       branch: repository.selectedBranch,
-      commitSha: repository.lastIndexedCommit,
+      commitSha: indexedCommit,
       retrievedChunks: chunks.length,
       embeddingModel: embedding.model,
       ...(model === undefined ? {} : { model }),
@@ -459,6 +496,85 @@ export class RepositoryQuestionService
       usage,
       latencyMs,
     };
+  }
+
+  private async observeDependency<Result>(
+    dependency: ApiDependency,
+    operation: string,
+    action: () => Promise<Result>,
+  ): Promise<Result> {
+    if (this.dependencies.metrics === undefined) {
+      return action();
+    }
+    const startedAt = performance.now();
+    try {
+      const result = await action();
+      this.reportMetric(() =>
+        this.dependencies.metrics?.observeDependency({
+          dependency,
+          operation,
+          outcome: "success",
+          durationSeconds: (performance.now() - startedAt) / 1_000,
+        }),
+      );
+      return result;
+    } catch (error) {
+      this.reportMetric(() =>
+        this.dependencies.metrics?.observeDependency({
+          dependency,
+          operation,
+          outcome: "failure",
+          durationSeconds: (performance.now() - startedAt) / 1_000,
+        }),
+      );
+      throw error;
+    }
+  }
+
+  private async observeAi<Result>(
+    operation: ApiAiOperation,
+    action: () => Promise<Result>,
+    usage: (result: Result) =>
+      | {
+          embeddingRequests?: number;
+          embeddingTokens?: number;
+          answerUsage?: AnswerTokenUsage;
+        }
+      | undefined,
+  ): Promise<Result> {
+    if (this.dependencies.metrics === undefined) {
+      return action();
+    }
+    const startedAt = performance.now();
+    try {
+      const result = await action();
+      this.reportMetric(() =>
+        this.dependencies.metrics?.observeAi({
+          operation,
+          outcome: "success",
+          durationSeconds: (performance.now() - startedAt) / 1_000,
+          ...usage(result),
+        }),
+      );
+      return result;
+    } catch (error) {
+      this.reportMetric(() =>
+        this.dependencies.metrics?.observeAi({
+          operation,
+          outcome: "failure",
+          durationSeconds: (performance.now() - startedAt) / 1_000,
+        }),
+      );
+      throw error;
+    }
+  }
+
+  private reportMetric(report: () => void): void {
+    try {
+      report();
+    } catch {
+      // Observability must never break the user-facing request path.
+    }
   }
 }
 
@@ -605,6 +721,7 @@ export function getDefaultRepositoryQuestionService(): RepositoryQuestionService
     embedder: createQuestionEmbeddingServiceFromEnv(process.env),
     retriever: new QdrantCodeChunkSearch(vectorStoreConfig),
     answerer: createRepositoryAnswerGeneratorFromEnv(process.env),
+    metrics: getDefaultApiMetrics(),
     searchLimit: env.QUESTION_SEARCH_LIMIT,
     ...(env.QUESTION_SCORE_THRESHOLD === undefined
       ? {}

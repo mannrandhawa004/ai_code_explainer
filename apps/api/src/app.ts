@@ -11,11 +11,12 @@ import type { Logger } from "pino";
 import { env } from "./config/env.js";
 import { logger as defaultLogger } from "./config/logger.js";
 import { AppError } from "./errors/app-error.js";
-import { errorHandler } from "./middleware/error-handler.js";
+import { createErrorHandler } from "./middleware/error-handler.js";
 import { notFound } from "./middleware/not-found.js";
 import { createSessionAuthMiddleware } from "./middleware/session-auth.js";
 import { createApiRouter } from "./routes/index.js";
 import { createGitHubWebhookRouter } from "./routes/github-webhook.routes.js";
+import { createMetricsRouter } from "./routes/metrics.routes.js";
 import type { AuthenticatedUserIdResolver } from "./routes/question.routes.js";
 import type { GitHubAuthServiceContract } from "./services/github-auth.service.js";
 import type { GitHubRepositoryServiceContract } from "./services/github-repository.service.js";
@@ -27,6 +28,10 @@ import type { RepositorySymbolGraphServiceContract } from "./services/repository
 import type { RepositoryApplicationFlowServiceContract } from "./services/repository-application-flow.service.js";
 import type { RepositoryArchitectureServiceContract } from "./services/repository-architecture.service.js";
 import type { RepositoryDependencyExplorationServiceContract } from "./services/repository-dependency-exploration.service.js";
+import {
+  getDefaultApiMetrics,
+  type ApiMetrics,
+} from "./observability/api-metrics.js";
 
 export type CreateAppOptions = {
   logger?: Logger;
@@ -42,6 +47,9 @@ export type CreateAppOptions = {
   githubRepositoryService?: GitHubRepositoryServiceContract;
   githubWebhookService?: GitHubWebhookServiceContract;
   resolveAuthenticatedUserId?: AuthenticatedUserIdResolver;
+  apiMetrics?: ApiMetrics;
+  metricsEnabled?: boolean;
+  metricsBearerToken?: string;
 };
 
 const corsOptions: CorsOptions = {
@@ -59,6 +67,12 @@ const corsOptions: CorsOptions = {
 export function createApp(options: CreateAppOptions = {}): Express {
   const app = express();
   const appLogger = options.logger ?? defaultLogger;
+  const metricsEnabled = options.metricsEnabled ?? env.METRICS_ENABLED;
+  const apiMetrics = metricsEnabled
+    ? (options.apiMetrics ?? getDefaultApiMetrics())
+    : undefined;
+  const metricsBearerToken =
+    options.metricsBearerToken ?? env.METRICS_BEARER_TOKEN;
 
   app.disable("x-powered-by");
 
@@ -77,12 +91,16 @@ export function createApp(options: CreateAppOptions = {}): Express {
         return requestId;
       },
       autoLogging: {
-        ignore: (request) => request.url === "/api/health",
+        ignore: (request) =>
+          request.url === "/api/health" || request.url === "/api/metrics",
       },
     }),
   );
   app.use(helmet());
   app.use(cors(corsOptions));
+  if (apiMetrics !== undefined) {
+    app.use(apiMetrics.createHttpMiddleware());
+  }
 
   if (!options.disableRateLimit) {
     app.use(
@@ -93,6 +111,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
         legacyHeaders: false,
         skip: (request) =>
           request.path === "/api/health" ||
+          request.path === "/api/metrics" ||
           request.path === "/api/github/webhook",
         handler(_request, response) {
           response.status(429).json({
@@ -102,6 +121,18 @@ export function createApp(options: CreateAppOptions = {}): Express {
             },
           });
         },
+      }),
+    );
+  }
+
+  if (apiMetrics !== undefined) {
+    app.use(
+      "/api",
+      createMetricsRouter({
+        metrics: apiMetrics,
+        ...(metricsBearerToken === undefined
+          ? {}
+          : { bearerToken: metricsBearerToken }),
       }),
     );
   }
@@ -234,7 +265,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
     }),
   );
   app.use(notFound);
-  app.use(errorHandler);
+  app.use(createErrorHandler(apiMetrics));
 
   return app;
 }

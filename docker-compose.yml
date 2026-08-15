@@ -115,6 +115,10 @@ services:
       QDRANT_URL: http://qdrant:6333
       OLLAMA_URL: ${OLLAMA_DOCKER_URL:-http://host.docker.internal:11434}
       TEMP_REPOSITORY_DIR: /tmp/codebase-explainer
+      WORKER_METRICS_HOST: 0.0.0.0
+      WORKER_METRICS_PORT: 9464
+    ports:
+      - "127.0.0.1:${CODEBASE_EXPLAINER_WORKER_METRICS_PORT:-9464}:9464"
     depends_on:
       mongodb:
         condition: service_healthy

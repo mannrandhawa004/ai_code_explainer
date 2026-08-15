@@ -15,6 +15,7 @@ import {
   GitHubWebhookProcessingError,
   type GitHubWebhookProcessorContract,
 } from "./jobs/github-webhook.processor.js";
+import type { WorkerMetricsObserver } from "./observability/worker-metrics.js";
 
 export type CreateGitHubWebhookWorkerOptions = {
   connection: Redis;
@@ -23,9 +24,22 @@ export type CreateGitHubWebhookWorkerOptions = {
   logger?: Logger;
   autorun?: boolean;
   prefix?: string;
+  metrics?: WorkerMetricsObserver;
 };
 
 const retentionSeconds = 30 * 24 * 60 * 60;
+
+function durationSeconds(job: { processedOn?: number } | undefined): number {
+  return Math.max(0, (Date.now() - (job?.processedOn ?? Date.now())) / 1_000);
+}
+
+function reportMetric(report: () => void): void {
+  try {
+    report();
+  } catch {
+    // Worker processing must not depend on metric collection.
+  }
+}
 
 export function createGitHubWebhookWorker(
   options: CreateGitHubWebhookWorkerOptions,
@@ -79,7 +93,16 @@ export function createGitHubWebhookWorker(
     workerOptions,
   );
 
+  worker.on("active", () => {
+    reportMetric(() => options.metrics?.recordJobStarted("github_webhook"));
+  });
   worker.on("completed", (job, result) => {
+    reportMetric(() =>
+      options.metrics?.recordJobCompleted(
+        "github_webhook",
+        durationSeconds(job),
+      ),
+    );
     log.info(
       {
         deliveryId: job.id,
@@ -91,6 +114,12 @@ export function createGitHubWebhookWorker(
     );
   });
   worker.on("failed", (job, error) => {
+    reportMetric(() =>
+      options.metrics?.recordJobFailed(
+        "github_webhook",
+        durationSeconds(job),
+      ),
+    );
     log.warn(
       {
         error,
@@ -102,9 +131,11 @@ export function createGitHubWebhookWorker(
     );
   });
   worker.on("stalled", (jobId) => {
+    reportMetric(() => options.metrics?.recordJobStalled("github_webhook"));
     log.warn({ deliveryId: jobId }, "GitHub webhook job stalled");
   });
   worker.on("error", (error) => {
+    reportMetric(() => options.metrics?.recordWorkerError("github_webhook"));
     log.error({ error }, "GitHub webhook worker error");
   });
 

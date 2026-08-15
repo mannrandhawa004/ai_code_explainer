@@ -56,6 +56,10 @@ import {
   InstallationTokenError,
   type InstallationTokenProviderContract,
 } from "../services/github-installation-token.service.js";
+import {
+  getDefaultWorkerMetrics,
+  type WorkerMetricsObserver,
+} from "../observability/worker-metrics.js";
 
 export type IndexingJobContract = {
   id: string;
@@ -136,6 +140,7 @@ export type RepositoryIndexingProcessorDependencies = {
   vectorCollection: VectorCollectionContract;
   chunkStore: CodeChunkStoreContract;
   installationTokenProvider?: InstallationTokenProviderContract;
+  metrics?: WorkerMetricsObserver;
 };
 
 export type RepositoryIndexingLimits = {
@@ -588,55 +593,61 @@ export class RepositoryIndexingProcessor {
         }
 
         await this.reportProgress(job, data, progressStages.embedding);
-        const embedded = await this.dependencies.embedder.embedChunks(
-          chunked.chunks,
-          {
+        const embedded = await this.observeAi(() =>
+          this.dependencies.embedder.embedChunks(chunked.chunks, {
             repositoryLabel: clonedRepository.fullName,
             endUserId: data.userId,
             ...(signal === undefined ? {} : { signal }),
-          },
+          }),
         );
 
         await this.reportProgress(job, data, progressStages.indexing);
-        await this.dependencies.vectorCollection.ensureCollection();
+        await this.observeQdrant("ensure_collection", () =>
+          this.dependencies.vectorCollection.ensureCollection(),
+        );
         const vectorOptions =
           signal === undefined ? { wait: true } : { signal, wait: true };
         if (plan.mode === "full") {
-          await this.dependencies.chunkStore.deleteRepositoryChunks(
-            {
-              userId: data.userId,
-              repositoryId: data.repositoryId,
-              branch: clonedRepository.branch,
-            },
-            vectorOptions,
+          await this.observeQdrant("delete_repository_chunks", () =>
+            this.dependencies.chunkStore.deleteRepositoryChunks(
+              {
+                userId: data.userId,
+                repositoryId: data.repositoryId,
+                branch: clonedRepository.branch,
+              },
+              vectorOptions,
+            ),
           );
         } else {
-          await this.dependencies.chunkStore.deleteFileChunks(
-            {
-              userId: data.userId,
-              repositoryId: data.repositoryId,
-              branch: clonedRepository.branch,
-              filePaths: [
-                ...plan.changedFiles.map((file) => file.relativePath),
-                ...plan.removedFilePaths,
-              ],
-            },
-            vectorOptions,
+          await this.observeQdrant("delete_file_chunks", () =>
+            this.dependencies.chunkStore.deleteFileChunks(
+              {
+                userId: data.userId,
+                repositoryId: data.repositoryId,
+                branch: clonedRepository.branch,
+                filePaths: [
+                  ...plan.changedFiles.map((file) => file.relativePath),
+                  ...plan.removedFilePaths,
+                ],
+              },
+              vectorOptions,
+            ),
           );
         }
-        await this.dependencies.chunkStore.upsert(
-          embedded.items,
-          vectorOptions,
+        await this.observeQdrant("upsert_chunks", () =>
+          this.dependencies.chunkStore.upsert(embedded.items, vectorOptions),
         );
         if (plan.mode === "incremental") {
-          await this.dependencies.chunkStore.promoteRepositoryCommit(
-            {
-              userId: data.userId,
-              repositoryId: data.repositoryId,
-              branch: clonedRepository.branch,
-              toCommitSha: clonedRepository.commitSha,
-            },
-            vectorOptions,
+          await this.observeQdrant("promote_commit", () =>
+            this.dependencies.chunkStore.promoteRepositoryCommit(
+              {
+                userId: data.userId,
+                repositoryId: data.repositoryId,
+                branch: clonedRepository.branch,
+                toCommitSha: clonedRepository.commitSha,
+              },
+              vectorOptions,
+            ),
           );
         }
         assertNotCancelled(signal);
@@ -681,6 +692,77 @@ export class RepositoryIndexingProcessor {
         };
       },
     );
+  }
+
+  private async observeQdrant<Result>(
+    operation: string,
+    action: () => Promise<Result>,
+  ): Promise<Result> {
+    if (this.dependencies.metrics === undefined) {
+      return action();
+    }
+    const startedAt = performance.now();
+    try {
+      const result = await action();
+      this.reportMetric(() =>
+        this.dependencies.metrics?.observeDependency({
+          dependency: "qdrant",
+          operation,
+          outcome: "success",
+          durationSeconds: (performance.now() - startedAt) / 1_000,
+        }),
+      );
+      return result;
+    } catch (error) {
+      this.reportMetric(() =>
+        this.dependencies.metrics?.observeDependency({
+          dependency: "qdrant",
+          operation,
+          outcome: "failure",
+          durationSeconds: (performance.now() - startedAt) / 1_000,
+        }),
+      );
+      throw error;
+    }
+  }
+
+  private async observeAi(
+    action: () => Promise<CodeChunkEmbeddingResult>,
+  ): Promise<CodeChunkEmbeddingResult> {
+    if (this.dependencies.metrics === undefined) {
+      return action();
+    }
+    const startedAt = performance.now();
+    try {
+      const result = await action();
+      this.reportMetric(() =>
+        this.dependencies.metrics?.observeAi({
+          operation: "embedding",
+          outcome: "success",
+          durationSeconds: (performance.now() - startedAt) / 1_000,
+          requests: result.usage.requests,
+          tokens: result.usage.totalTokens,
+        }),
+      );
+      return result;
+    } catch (error) {
+      this.reportMetric(() =>
+        this.dependencies.metrics?.observeAi({
+          operation: "embedding",
+          outcome: "failure",
+          durationSeconds: (performance.now() - startedAt) / 1_000,
+        }),
+      );
+      throw error;
+    }
+  }
+
+  private reportMetric(report: () => void): void {
+    try {
+      report();
+    } catch {
+      // Observability must never change indexing behaviour.
+    }
   }
 
   private async reportProgress(
@@ -777,6 +859,9 @@ export function createDefaultRepositoryIndexingProcessor(
       embedder: createCodeChunkEmbeddingServiceFromEnv(process.env),
       vectorCollection,
       chunkStore: new QdrantCodeChunkStore(vectorConfig, vectorCollection.client),
+      ...(environment.WORKER_METRICS_ENABLED
+        ? { metrics: getDefaultWorkerMetrics() }
+        : {}),
       ...(environment.GITHUB_APP_ID && environment.GITHUB_PRIVATE_KEY
         ? {
             installationTokenProvider: new GitHubInstallationTokenProvider(

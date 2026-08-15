@@ -18,6 +18,7 @@ import {
   type RepositoryIndexingProcessorDependencies,
 } from "../src/jobs/repository-indexing.processor.js";
 import type { IndexingPersistence } from "../src/persistence/indexing-persistence.js";
+import type { WorkerMetricsObserver } from "../src/observability/worker-metrics.js";
 
 const userId = "bbbbbbbbbbbbbbbbbbbbbbbb";
 const repositoryId = "aaaaaaaaaaaaaaaaaaaaaaaa";
@@ -261,6 +262,50 @@ describe("RepositoryIndexingProcessor", () => {
     expect(dependencies.chunkStore.upsert).toHaveBeenCalledWith(
       embedded.items,
       { wait: true },
+    );
+  });
+
+  it("reports embedding usage and Qdrant operation latency without identifiers", async () => {
+    const metrics: WorkerMetricsObserver = {
+      recordJobStarted: vi.fn(),
+      recordJobCompleted: vi.fn(),
+      recordJobFailed: vi.fn(),
+      recordJobStalled: vi.fn(),
+      recordWorkerError: vi.fn(),
+      observeDependency: vi.fn(),
+      observeAi: vi.fn(),
+    };
+    const dependencies = {
+      ...createDependencies(),
+      metrics,
+    };
+
+    await createProcessor(dependencies).process(createJob(), jobData);
+
+    expect(metrics.observeAi).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: "embedding",
+        outcome: "success",
+        requests: 1,
+        tokens: 8,
+      }),
+    );
+    expect(metrics.observeDependency).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dependency: "qdrant",
+        operation: "ensure_collection",
+        outcome: "success",
+      }),
+    );
+    expect(metrics.observeDependency).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dependency: "qdrant",
+        operation: "upsert_chunks",
+        outcome: "success",
+      }),
+    );
+    expect(JSON.stringify(vi.mocked(metrics.observeAi).mock.calls)).not.toContain(
+      repositoryId,
     );
   });
 

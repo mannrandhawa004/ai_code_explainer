@@ -13,6 +13,19 @@ const optionalTrimmedString = z
   .optional()
   .transform((value) => value?.trim() || undefined);
 
+const booleanEnvironmentValue = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+  if (value.toLowerCase() === "true") {
+    return true;
+  }
+  if (value.toLowerCase() === "false") {
+    return false;
+  }
+  return value;
+}, z.boolean());
+
 function usesSecureMongoTransport(value: string): boolean {
   if (value.toLowerCase().startsWith("mongodb+srv://")) {
     return true;
@@ -129,6 +142,15 @@ const workerEnvSchema = z.object({
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
+  WORKER_METRICS_ENABLED: booleanEnvironmentValue.default(true),
+  WORKER_METRICS_HOST: z.string().trim().min(1).default("127.0.0.1"),
+  WORKER_METRICS_PORT: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(65_535)
+    .default(9_464),
+  METRICS_BEARER_TOKEN: optionalTrimmedString,
   WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce
     .number()
     .int()
@@ -204,6 +226,14 @@ export function parseWorkerEnvironment(
     if (configuredGitHubValues !== 2) {
       throw new Error(
         "Private repository indexing must be configured in production",
+      );
+    }
+    if (
+      result.data.WORKER_METRICS_ENABLED &&
+      (result.data.METRICS_BEARER_TOKEN?.length ?? 0) < 32
+    ) {
+      throw new Error(
+        "METRICS_BEARER_TOKEN must contain at least 32 characters in production",
       );
     }
   }

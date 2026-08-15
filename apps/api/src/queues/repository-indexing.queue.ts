@@ -23,6 +23,13 @@ export type QueueCancellationResult =
   | "finished"
   | "not_found";
 
+export type OperationalQueueCounts = {
+  waiting: number;
+  active: number;
+  delayed: number;
+  failed: number;
+};
+
 export interface RepositoryIndexingQueueContract {
   enqueue(
     data: RepositoryIndexingJobData,
@@ -124,6 +131,22 @@ export class BullMqRepositoryIndexingQueue
     } catch {
       return false;
     }
+  }
+
+  async getOperationalCounts(): Promise<OperationalQueueCounts> {
+    await this.ensureConnected();
+    const counts = await this.queue.getJobCounts(
+      "waiting",
+      "active",
+      "delayed",
+      "failed",
+    );
+    return {
+      waiting: counts.waiting ?? 0,
+      active: counts.active ?? 0,
+      delayed: counts.delayed ?? 0,
+      failed: counts.failed ?? 0,
+    };
   }
 
   close(): Promise<void> {

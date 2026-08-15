@@ -4,6 +4,7 @@ import {
 } from "@codebase-explainer/database";
 import type { Worker } from "bullmq";
 import type { Redis } from "ioredis";
+import type { Server } from "node:http";
 
 import type {
   GitHubWebhookJobData,
@@ -23,6 +24,11 @@ import { GitHubInstallationTokenProvider } from "./services/github-installation-
 import { MongoGitHubWebhookRepositoryOperations } from "./services/github-webhook-repository.service.js";
 import { createGitHubWebhookWorker } from "./github-webhook.worker.js";
 import { createRepositoryIndexingWorker } from "./worker.js";
+import {
+  closeWorkerMetricsServer,
+  startWorkerMetricsServer,
+} from "./observability/metrics-server.js";
+import { getDefaultWorkerMetrics } from "./observability/worker-metrics.js";
 
 export type WorkerRuntime = {
   worker: Worker<
@@ -37,6 +43,7 @@ export type WorkerRuntime = {
   >;
   connection: Redis;
   webhookConnection: Redis;
+  metricsServer?: Server;
   close(force?: boolean): Promise<void>;
 };
 
@@ -66,15 +73,20 @@ export async function startWorkerRuntime(
   let githubWebhookWorker: ReturnType<
     typeof createGitHubWebhookWorker
   > | undefined;
+  let metricsServer: Server | undefined;
 
   try {
     await Promise.all([connection.connect(), webhookConnection.connect()]);
     await Promise.all([connection.ping(), webhookConnection.ping()]);
+    const metrics = environment.WORKER_METRICS_ENABLED
+      ? getDefaultWorkerMetrics()
+      : undefined;
     const processor = createDefaultRepositoryIndexingProcessor(environment);
     const createdRepositoryWorker = createRepositoryIndexingWorker({
       connection,
       processor,
       concurrency: environment.INDEXING_CONCURRENCY,
+      ...(metrics === undefined ? {} : { metrics }),
     });
     repositoryWorker = createdRepositoryWorker;
     const createdIndexingProducer = new BullMqRepositoryIndexingProducer(
@@ -100,8 +112,19 @@ export async function startWorkerRuntime(
       connection: webhookConnection,
       processor: webhookProcessor,
       concurrency: environment.GITHUB_WEBHOOK_CONCURRENCY,
+      ...(metrics === undefined ? {} : { metrics }),
     });
     githubWebhookWorker = createdWebhookWorker;
+    if (metrics !== undefined) {
+      metricsServer = await startWorkerMetricsServer({
+        host: environment.WORKER_METRICS_HOST,
+        port: environment.WORKER_METRICS_PORT,
+        metrics,
+        ...(environment.METRICS_BEARER_TOKEN === undefined
+          ? {}
+          : { bearerToken: environment.METRICS_BEARER_TOKEN }),
+      });
+    }
 
     let closePromise: Promise<void> | undefined;
     const close = (force = false): Promise<void> => {
@@ -111,6 +134,9 @@ export async function startWorkerRuntime(
           createdWebhookWorker.close(force),
         ]);
         await createdIndexingProducer.close();
+        if (metricsServer !== undefined) {
+          await closeWorkerMetricsServer(metricsServer);
+        }
         await Promise.all([connection.quit(), webhookConnection.quit()]);
         await disconnectDatabase();
       })();
@@ -121,6 +147,13 @@ export async function startWorkerRuntime(
       {
         indexingConcurrency: environment.INDEXING_CONCURRENCY,
         webhookConcurrency: environment.GITHUB_WEBHOOK_CONCURRENCY,
+        ...(metricsServer === undefined
+          ? { metricsEnabled: false }
+          : {
+              metricsEnabled: true,
+              metricsHost: environment.WORKER_METRICS_HOST,
+              metricsPort: environment.WORKER_METRICS_PORT,
+            }),
       },
       "Repository indexing and GitHub webhook workers started",
     );
@@ -129,6 +162,7 @@ export async function startWorkerRuntime(
       webhookWorker: createdWebhookWorker,
       connection,
       webhookConnection,
+      ...(metricsServer === undefined ? {} : { metricsServer }),
       close,
     };
   } catch (error) {
@@ -136,6 +170,9 @@ export async function startWorkerRuntime(
       repositoryWorker?.close(true),
       githubWebhookWorker?.close(true),
       indexingProducer?.close(),
+      metricsServer === undefined
+        ? undefined
+        : closeWorkerMetricsServer(metricsServer),
     ]);
     connection.disconnect();
     webhookConnection.disconnect();

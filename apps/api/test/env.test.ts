@@ -20,6 +20,7 @@ const secureProductionEnvironment: NodeJS.ProcessEnv = {
   GITHUB_CALLBACK_URL: "https://api.example.com/api/auth/github/callback",
   JWT_SECRET: "j".repeat(32),
   ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+  METRICS_BEARER_TOKEN: "m".repeat(32),
 };
 
 describe("API environment", () => {
@@ -31,6 +32,24 @@ describe("API environment", () => {
     expect(result.REDIS_URL).toMatch(/^rediss:\/\//u);
     expect(result.QDRANT_URL).toMatch(/^https:\/\//u);
     expect(result.INDEXING_MAX_ATTEMPTS).toBe(1);
+    expect(result.METRICS_ENABLED).toBe(true);
+  });
+
+  it("requires a metrics token when production metrics are enabled", () => {
+    expect(() =>
+      parseApiEnvironment({
+        ...secureProductionEnvironment,
+        METRICS_BEARER_TOKEN: "",
+      }),
+    ).toThrow("METRICS_BEARER_TOKEN must contain at least 32 characters");
+
+    expect(
+      parseApiEnvironment({
+        ...secureProductionEnvironment,
+        METRICS_ENABLED: "false",
+        METRICS_BEARER_TOKEN: "",
+      }).METRICS_ENABLED,
+    ).toBe(false);
   });
 
   it.each([
