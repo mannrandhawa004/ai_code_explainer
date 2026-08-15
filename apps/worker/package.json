@@ -23,7 +23,7 @@
     "@codebase-explainer/vector-store": "0.1.0",
     "bullmq": "^5.81.2",
     "dotenv": "^17.4.2",
-    "ioredis": "^5.11.1",
+    "ioredis": "^6.0.0",
     "octokit": "^5.0.5",
     "pino": "^10.3.1",
     "prom-client": "^15.1.3",
