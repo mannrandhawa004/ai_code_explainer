@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@codebase-explainer/ai": "*",
-    "@qdrant/js-client-rest": "^1.18.0",
+    "@qdrant/js-client-rest": "^1.19.0",
     "p-limit": "^7.3.1"
   }
 }
