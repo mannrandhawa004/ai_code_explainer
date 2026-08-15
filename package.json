@@ -21,7 +21,7 @@
     "containers:build:worker": "docker build --file docker/backend.Dockerfile --target worker --tag ai-codebase-explainer-worker:local ."
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.2.0",
     "jsdom": "^29.1.1",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
