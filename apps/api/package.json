@@ -22,7 +22,7 @@
     "@codebase-explainer/shared": "0.1.0",
     "@codebase-explainer/vector-store": "0.1.0",
     "@octokit/webhooks": "^14.2.0",
-    "bullmq": "^5.81.2",
+    "bullmq": "^6.1.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
