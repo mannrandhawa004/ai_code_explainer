@@ -54,7 +54,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 - [x] A1. Add an authorized repository import-graph API
 - [x] A2. Add a symbol reference graph and "Where is this used?" queries
-- [ ] A3. Add route-controller-service-model flow discovery
+- [x] A3. Add route-controller-service-model flow discovery
 - [ ] A4. Add architecture summaries and Mermaid diagrams
 - [ ] A5. Add dependency exploration and related-file suggestions
 
@@ -67,7 +67,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 ## Current state
 
-Advanced intelligence steps A1-A2 add repository-isolated import and symbol reference graphs built from the exact indexed branch and commit. The backend resolves internal relative imports, reports unresolved links and cycles, calculates file degrees, connects enclosing symbols to matching definitions, preserves ambiguous names, and supports bounded "Where is this used?" lookups. Production step P1 adds separate multi-stage API and worker container targets, non-root Tini runtimes, an API health check, worker-only Git, a hardened local application Compose profile, and fail-fast production TLS/provider validation. See the [deployment guide](docs/deployment.md).
+Advanced intelligence steps A1-A3 add repository-isolated import, symbol-reference, and application-flow graphs built from the exact indexed branch and commit. The backend resolves internal relative imports, reports unresolved links and cycles, connects enclosing symbols to matching definitions, preserves ambiguous names, supports bounded "Where is this used?" lookups, and derives route-controller-service-model paths with optional exact-route filtering. Production step P1 adds separate multi-stage API and worker container targets, non-root Tini runtimes, an API health check, worker-only Git, a hardened local application Compose profile, and fail-fast production TLS/provider validation. See the [deployment guide](docs/deployment.md).
 
 ## Prerequisites
 
