@@ -29,6 +29,10 @@ import {
   createRepositoryApplicationFlowRouter,
   type CreateRepositoryApplicationFlowRouterOptions,
 } from "./repository-application-flow.routes.js";
+import {
+  createRepositoryArchitectureRouter,
+  type CreateRepositoryArchitectureRouterOptions,
+} from "./repository-architecture.routes.js";
 
 export type CreateApiRouterOptions = {
   auth?: CreateAuthRouterOptions;
@@ -38,6 +42,7 @@ export type CreateApiRouterOptions = {
   repositoryImportGraph?: CreateRepositoryImportGraphRouterOptions;
   repositorySymbolGraph?: CreateRepositorySymbolGraphRouterOptions;
   repositoryApplicationFlow?: CreateRepositoryApplicationFlowRouterOptions;
+  repositoryArchitecture?: CreateRepositoryArchitectureRouterOptions;
 };
 
 export function createApiRouter(options: CreateApiRouterOptions = {}): Router {
@@ -51,6 +56,7 @@ export function createApiRouter(options: CreateApiRouterOptions = {}): Router {
   router.use(
     createRepositoryApplicationFlowRouter(options.repositoryApplicationFlow),
   );
+  router.use(createRepositoryArchitectureRouter(options.repositoryArchitecture));
   router.use(createQuestionRouter(options.question));
   return router;
 }
