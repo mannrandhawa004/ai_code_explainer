@@ -21,7 +21,7 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
-    "mongoose": "^9.8.0"
+    "mongoose": "^9.9.2"
   },
   "devDependencies": {
     "vitest": "^4.1.10"

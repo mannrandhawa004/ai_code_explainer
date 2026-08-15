@@ -26,7 +26,7 @@
   "dependencies": {
     "@codebase-explainer/repository": "*",
     "js-tiktoken": "^1.0.21",
-    "openai": "^7.1.0",
+    "openai": "^7.4.0",
     "p-limit": "^7.3.1"
   },
   "devDependencies": {
