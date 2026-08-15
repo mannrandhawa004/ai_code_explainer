@@ -13,6 +13,7 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "ci:validate": "node scripts/validate-workflows.mjs",
     "verify:backend-runtime": "node scripts/verify-built-backend.mjs",
     "evaluate": "npm run evaluate --workspace @codebase-explainer/evaluation --",
     "containers:config": "docker compose --profile application config --quiet",
@@ -23,7 +24,8 @@
     "@types/node": "^24.0.0",
     "jsdom": "^29.1.1",
     "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "yaml": "^2.9.0"
   },
   "engines": {
     "node": ">=22.0.0"

@@ -1,0 +1,158 @@
+name: Release backend images
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version in vMAJOR.MINOR.PATCH format
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+  security-events: write
+
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      image-base: ${{ steps.release.outputs.image-base }}
+      stable: ${{ steps.release.outputs.stable }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Validate version and image namespace
+        id: release
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          candidate="$GITHUB_REF_NAME"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+              echo "Manual releases must run from the main branch." >&2
+              exit 1
+            fi
+            candidate="$DISPATCH_VERSION"
+          fi
+          if [[ ! "$candidate" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Version must match vMAJOR.MINOR.PATCH or a SemVer prerelease." >&2
+            exit 1
+          fi
+          version="${candidate#v}"
+          repository="${GITHUB_REPOSITORY,,}"
+          stable=true
+          if [[ "$version" == *-* ]]; then
+            stable=false
+          fi
+          {
+            echo "image-base=ghcr.io/$repository"
+            echo "stable=$stable"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish ${{ matrix.target }}
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [api, worker]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Build image for security gate
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: docker/backend.Dockerfile
+          target: ${{ matrix.target }}
+          load: true
+          push: false
+          tags: codebase-explainer-${{ matrix.target }}:release-scan
+          cache-from: type=gha,scope=release-${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.target }}
+          provenance: false
+          sbom: false
+
+      - name: Scan release image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: codebase-explainer-${{ matrix.target }}:release-scan
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-release-${{ matrix.target }}.sarif
+          exit-code: "1"
+          limit-severities-for-sarif: true
+          version: v0.72.0
+
+      - name: Upload release scan results
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          sarif_file: trivy-release-${{ matrix.target }}.sarif
+          category: trivy-release-${{ matrix.target }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ needs.prepare.outputs.image-base }}-${{ matrix.target }}
+          tags: |
+            type=raw,value=${{ needs.prepare.outputs.version }}
+            type=raw,value=sha-${{ github.sha }}
+            type=raw,value=latest,enable=${{ needs.prepare.outputs.stable == 'true' }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+
+      - name: Build and publish image
+        id: publish
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: docker/backend.Dockerfile
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=gha,scope=release-${{ matrix.target }}
+          provenance: false
+          sbom: true
+
+      - name: Attest image provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ needs.prepare.outputs.image-base }}-${{ matrix.target }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true

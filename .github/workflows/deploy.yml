@@ -1,0 +1,124 @@
+name: Deploy released images
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected GitHub deployment environment
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: Existing released version in MAJOR.MINOR.PATCH format
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.version }} to ${{ inputs.environment }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Prepare immutable image references
+        id: release
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Version must match MAJOR.MINOR.PATCH or a SemVer prerelease." >&2
+            exit 1
+          fi
+          repository="${GITHUB_REPOSITORY,,}"
+          {
+            echo "api-image=ghcr.io/${repository}-api:${RELEASE_VERSION}"
+            echo "worker-image=ghcr.io/${repository}-worker:${RELEASE_VERSION}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Request deployment
+        env:
+          API_IMAGE: ${{ steps.release.outputs.api-image }}
+          DEPLOY_HOOK_TOKEN: ${{ secrets.DEPLOY_HOOK_TOKEN }}
+          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          WORKER_IMAGE: ${{ steps.release.outputs.worker-image }}
+        run: |
+          if [[ -z "$DEPLOY_HOOK_URL" ]]; then
+            echo "Configure DEPLOY_HOOK_URL in the selected GitHub environment." >&2
+            exit 1
+          fi
+          if [[ "$DEPLOY_HOOK_URL" != https://* ]]; then
+            echo "DEPLOY_HOOK_URL must use HTTPS." >&2
+            exit 1
+          fi
+          payload="$(jq -n \
+            --arg environment "$DEPLOYMENT_ENVIRONMENT" \
+            --arg version "$RELEASE_VERSION" \
+            --arg apiImage "$API_IMAGE" \
+            --arg workerImage "$WORKER_IMAGE" \
+            --arg sourceSha "$GITHUB_SHA" \
+            '{environment: $environment, version: $version, apiImage: $apiImage, workerImage: $workerImage, sourceSha: $sourceSha}')"
+          headers=(--header "Content-Type: application/json")
+          if [[ -n "$DEPLOY_HOOK_TOKEN" ]]; then
+            headers+=(--header "Authorization: Bearer $DEPLOY_HOOK_TOKEN")
+          fi
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors --max-time 30 \
+            --request POST "${headers[@]}" --data "$payload" "$DEPLOY_HOOK_URL" \
+            > /dev/null
+
+      - name: Request frontend deployment
+        env:
+          FRONTEND_DEPLOY_HOOK_URL: ${{ secrets.FRONTEND_DEPLOY_HOOK_URL }}
+        run: |
+          if [[ -z "$FRONTEND_DEPLOY_HOOK_URL" ]]; then
+            echo "No frontend deploy hook configured; relying on the platform's Git integration."
+            exit 0
+          fi
+          if [[ "$FRONTEND_DEPLOY_HOOK_URL" != https://* ]]; then
+            echo "FRONTEND_DEPLOY_HOOK_URL must use HTTPS." >&2
+            exit 1
+          fi
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors --max-time 30 \
+            --request POST "$FRONTEND_DEPLOY_HOOK_URL" > /dev/null
+
+      - name: Verify deployment health
+        env:
+          API_HEALTH_URL: ${{ vars.API_HEALTH_URL }}
+          FRONTEND_HEALTH_URL: ${{ vars.FRONTEND_HEALTH_URL }}
+          WORKER_HEALTH_URL: ${{ vars.WORKER_HEALTH_URL }}
+        run: |
+          check_health() {
+            local service="$1"
+            local url="$2"
+            if [[ -z "$url" ]]; then
+              return 0
+            fi
+            if [[ "$url" != https://* ]]; then
+              echo "$service health URL must use HTTPS." >&2
+              return 1
+            fi
+            curl --fail --silent --show-error \
+              --retry 20 --retry-delay 10 --retry-all-errors --max-time 15 \
+              "$url" > /dev/null
+            echo "$service health check passed."
+          }
+
+          if [[ -z "$API_HEALTH_URL" ]]; then
+            echo "Configure API_HEALTH_URL in the selected GitHub environment." >&2
+            exit 1
+          fi
+          check_health "API" "$API_HEALTH_URL"
+          check_health "Worker" "$WORKER_HEALTH_URL"
+          check_health "Frontend" "$FRONTEND_HEALTH_URL"
