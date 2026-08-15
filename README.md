@@ -56,7 +56,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 - [x] A2. Add a symbol reference graph and "Where is this used?" queries
 - [x] A3. Add route-controller-service-model flow discovery
 - [x] A4. Add architecture summaries and Mermaid diagrams
-- [ ] A5. Add dependency exploration and related-file suggestions
+- [x] A5. Add dependency exploration and related-file suggestions
 
 ## Production readiness
 
@@ -67,7 +67,7 @@ Question -> hybrid retrieval -> grounded generation -> streamed cited answer
 
 ## Current state
 
-Advanced intelligence steps A1-A4 add repository-isolated import, symbol-reference, application-flow, and architecture-summary APIs built from the exact indexed branch and commit. The backend resolves internal relative imports, reports unresolved links and cycles, connects enclosing symbols to matching definitions, preserves ambiguous names, supports bounded "Where is this used?" lookups, derives route-controller-service-model paths, and produces escaped, bounded Mermaid diagrams without an AI-provider call. Production step P1 adds separate multi-stage API and worker container targets, non-root Tini runtimes, an API health check, worker-only Git, a hardened local application Compose profile, and fail-fast production TLS/provider validation. See the [deployment guide](docs/deployment.md).
+Advanced intelligence steps A1-A5 add repository-isolated import, symbol-reference, application-flow, architecture-summary, and dependency-exploration APIs built from the exact indexed branch and commit. The backend resolves internal relative imports, reports unresolved links and cycles, connects enclosing symbols to matching definitions, preserves ambiguous names, supports bounded "Where is this used?" lookups, derives route-controller-service-model paths, produces escaped Mermaid diagrams, explores dependency neighbourhoods, and ranks related files with explicit import, symbol, and flow reasons—all without an AI-provider call. Production step P1 adds separate multi-stage API and worker container targets, non-root Tini runtimes, an API health check, worker-only Git, a hardened local application Compose profile, and fail-fast production TLS/provider validation. See the [deployment guide](docs/deployment.md).
 
 ## Prerequisites
 

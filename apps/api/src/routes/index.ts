@@ -33,6 +33,10 @@ import {
   createRepositoryArchitectureRouter,
   type CreateRepositoryArchitectureRouterOptions,
 } from "./repository-architecture.routes.js";
+import {
+  createRepositoryDependencyExplorationRouter,
+  type CreateRepositoryDependencyExplorationRouterOptions,
+} from "./repository-dependency-exploration.routes.js";
 
 export type CreateApiRouterOptions = {
   auth?: CreateAuthRouterOptions;
@@ -43,6 +47,7 @@ export type CreateApiRouterOptions = {
   repositorySymbolGraph?: CreateRepositorySymbolGraphRouterOptions;
   repositoryApplicationFlow?: CreateRepositoryApplicationFlowRouterOptions;
   repositoryArchitecture?: CreateRepositoryArchitectureRouterOptions;
+  repositoryDependencyExploration?: CreateRepositoryDependencyExplorationRouterOptions;
 };
 
 export function createApiRouter(options: CreateApiRouterOptions = {}): Router {
@@ -57,6 +62,11 @@ export function createApiRouter(options: CreateApiRouterOptions = {}): Router {
     createRepositoryApplicationFlowRouter(options.repositoryApplicationFlow),
   );
   router.use(createRepositoryArchitectureRouter(options.repositoryArchitecture));
+  router.use(
+    createRepositoryDependencyExplorationRouter(
+      options.repositoryDependencyExploration,
+    ),
+  );
   router.use(createQuestionRouter(options.question));
   return router;
 }
