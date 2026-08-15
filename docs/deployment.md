@@ -123,3 +123,9 @@ Set the platform termination grace period above `WORKER_SHUTDOWN_TIMEOUT_MS` so 
 7. Import a small test repository, wait for indexing, ask a known evaluation question, and confirm its file/line citation.
 
 Rollback API and worker to the previous matching image pair. Do not roll back only one service after a schema-affecting release unless that version combination was explicitly tested.
+
+## Automated releases and deployments
+
+The repository includes locked GitHub Actions workflows for CI, dependency and container scanning, GHCR publishing, provenance attestations, and protected staging/production deployments. A release tag such as `v1.0.0` publishes matching API and worker images only after both pass a high/critical Trivy gate. Deployment is provider-neutral: a protected GitHub environment calls an HTTPS deployment hook with both immutable versioned image references, then verifies configured health URLs.
+
+See the [CI/CD guide](ci-cd.md) for repository settings, environment secrets, the deployment-hook contract, release commands, attestation verification, and rollback instructions.
