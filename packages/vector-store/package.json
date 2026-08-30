@@ -24,11 +24,11 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "devDependencies": {
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "@codebase-explainer/ai": "*",
-    "@qdrant/js-client-rest": "^1.18.0",
+    "@qdrant/js-client-rest": "^1.19.0",
     "p-limit": "^7.3.1"
   }
 }

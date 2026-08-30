@@ -21,13 +21,13 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "devDependencies": {
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "ignore": "^7.0.6",
     "p-limit": "^7.3.1",
-    "tree-sitter": "^0.21.1",
-    "tree-sitter-javascript": "^0.23.1",
+    "tree-sitter": "^0.25.1",
+    "tree-sitter-javascript": "^0.25.0",
     "tree-sitter-typescript": "^0.23.2"
   }
 }
